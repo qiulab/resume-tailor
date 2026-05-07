@@ -8,32 +8,20 @@ import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { useSession } from "@/hooks/useSession";
 import {
-  FileText,
-  Link2,
-  Linkedin,
-  Upload,
-  ArrowRight,
-  ArrowLeft,
-  CheckCircle,
-  Loader2,
-  X,
-  FileUp,
-  Sparkles,
+  FileText, Link2, Linkedin, Upload, ArrowRight, ArrowLeft,
+  CheckCircle, Loader2, X, FileUp, Sparkles, Briefcase, GraduationCap, Star,
 } from "lucide-react";
 
 const STEPS = [
-  { id: 1, title: "LinkedIn Profile", icon: Linkedin, description: "Optional — helps personalize suggestions" },
-  { id: 2, title: "Job Posting", icon: Link2, description: "Paste the URL of the job you're applying to" },
+  { id: 1, title: "LinkedIn Profile", icon: Linkedin, description: "Optional — enables deeper analysis" },
+  { id: 2, title: "Job Posting", icon: Link2, description: "Paste the URL of the job you're targeting" },
   { id: 3, title: "Your Resume", icon: FileUp, description: "Upload your current resume (PDF or DOCX)" },
 ];
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      resolve(result.split(",")[1] ?? "");
-    };
+    reader.onload = () => resolve((reader.result as string).split(",")[1] ?? "");
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
@@ -42,9 +30,16 @@ function fileToBase64(file: File): Promise<string> {
 const PROCESSING_STEPS = [
   "Uploading resume...",
   "Reading job description...",
+  "Parsing LinkedIn profile...",
   "Running AI analysis...",
   "Benchmarking similar roles...",
-  "Brainstorming projects...",
+  "Generating project ideas & job matches...",
+];
+
+const LINKEDIN_BENEFITS = [
+  { icon: Briefcase, label: "Full work history", desc: "All roles, not just what's on your resume" },
+  { icon: Star, label: "LinkedIn skills", desc: "Endorsed skills vs. job requirements" },
+  { icon: GraduationCap, label: "Education & certs", desc: "Degree and certification gap analysis" },
 ];
 
 export default function Analyze() {
@@ -65,7 +60,16 @@ export default function Analyze() {
     try { new URL(url); return true; } catch { return false; }
   };
 
+  const validateLinkedInUrl = (url: string) => {
+    if (!url) return true; // optional
+    return /linkedin\.com\/in\/[a-zA-Z0-9\-_%]+/i.test(url);
+  };
+
   const handleNext = () => {
+    if (step === 1 && linkedinUrl && !validateLinkedInUrl(linkedinUrl)) {
+      toast.error("Please enter a valid LinkedIn profile URL (e.g. linkedin.com/in/yourname)");
+      return;
+    }
     if (step === 2 && !validateJobUrl(jobUrl)) {
       toast.error("Please enter a valid job posting URL");
       return;
@@ -84,22 +88,15 @@ export default function Analyze() {
     }
   }, []);
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) setResumeFile(file);
-  };
-
-  // Simulate progress steps while processing
   const simulateProgress = () => {
     let current = 0;
+    const hasLinkedIn = !!linkedinUrl;
+    const steps = hasLinkedIn ? PROCESSING_STEPS : PROCESSING_STEPS.filter((_, i) => i !== 2);
     const interval = setInterval(() => {
       current++;
-      if (current < PROCESSING_STEPS.length) {
-        setProcessingStep(current);
-      } else {
-        clearInterval(interval);
-      }
-    }, 8000);
+      if (current < steps.length) setProcessingStep(current);
+      else clearInterval(interval);
+    }, hasLinkedIn ? 10000 : 8000);
     return interval;
   };
 
@@ -131,6 +128,8 @@ export default function Analyze() {
     }
   };
 
+  const activeSteps = linkedinUrl ? PROCESSING_STEPS : PROCESSING_STEPS.filter((_, i) => i !== 2);
+
   if (isSubmitting) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -139,13 +138,15 @@ export default function Analyze() {
             <Sparkles className="w-8 h-8 text-primary animate-pulse" />
           </div>
           <h2 className="text-2xl font-serif font-semibold text-foreground mb-2">
-            Analyzing your resume
+            {linkedinUrl ? "Deep analysis in progress" : "Analyzing your resume"}
           </h2>
           <p className="text-muted-foreground mb-8 text-sm">
-            Our AI is working through your resume and the job description. This takes about 30–90 seconds.
+            {linkedinUrl
+              ? "Parsing your LinkedIn profile and running a comprehensive AI analysis. This takes about 60–90 seconds."
+              : "Running AI analysis on your resume and the job description. About 30–60 seconds."}
           </p>
           <div className="space-y-3 mb-8">
-            {PROCESSING_STEPS.map((s, i) => (
+            {activeSteps.map((s, i) => (
               <div key={s} className="flex items-center gap-3 text-sm">
                 {i < processingStep ? (
                   <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />
@@ -162,7 +163,7 @@ export default function Analyze() {
               </div>
             ))}
           </div>
-          <Progress value={(processingStep / PROCESSING_STEPS.length) * 100} className="h-1.5" />
+          <Progress value={(processingStep / activeSteps.length) * 100} className="h-1.5" />
         </div>
       </div>
     );
@@ -170,7 +171,6 @@ export default function Analyze() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Nav */}
       <nav className="border-b border-border/60 bg-background/80 backdrop-blur-xl">
         <div className="container flex items-center justify-between h-16">
           <button onClick={() => navigate("/")} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
@@ -179,9 +179,7 @@ export default function Analyze() {
             </div>
             <span className="font-serif font-semibold text-foreground">ResumeTailor</span>
           </button>
-          <Button variant="ghost" size="sm" onClick={() => navigate("/history")}>
-            My History
-          </Button>
+          <Button variant="ghost" size="sm" onClick={() => navigate("/history")}>My History</Button>
         </div>
       </nav>
 
@@ -197,7 +195,7 @@ export default function Analyze() {
                     step === s.id ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25" :
                     "bg-secondary text-muted-foreground"
                   }`}>
-                    {step > s.id ? <CheckCircle className="w-4.5 h-4.5" /> : s.id}
+                    {step > s.id ? <CheckCircle className="w-5 h-5" /> : s.id}
                   </div>
                   <span className={`text-xs mt-2 font-medium ${step === s.id ? "text-foreground" : "text-muted-foreground"}`}>
                     {s.title}
@@ -221,9 +219,21 @@ export default function Analyze() {
                 </div>
                 <div>
                   <h2 className="font-serif font-semibold text-xl text-foreground">LinkedIn Profile</h2>
-                  <p className="text-sm text-muted-foreground">Optional — skip if you prefer</p>
+                  <p className="text-sm text-muted-foreground">Optional — but unlocks much deeper analysis</p>
                 </div>
               </div>
+
+              {/* Benefits grid */}
+              <div className="grid grid-cols-3 gap-3 mb-6">
+                {LINKEDIN_BENEFITS.map((b) => (
+                  <div key={b.label} className="bg-blue-50/60 border border-blue-100 rounded-xl p-3 text-center">
+                    <b.icon className="w-4 h-4 text-blue-600 mx-auto mb-1.5" />
+                    <p className="text-xs font-medium text-blue-900">{b.label}</p>
+                    <p className="text-[10px] text-blue-600 mt-0.5 leading-tight">{b.desc}</p>
+                  </div>
+                ))}
+              </div>
+
               <div>
                 <Label htmlFor="linkedin" className="text-sm font-medium text-foreground mb-2 block">
                   LinkedIn Profile URL
@@ -236,14 +246,23 @@ export default function Analyze() {
                   className="h-11"
                 />
                 <p className="text-xs text-muted-foreground mt-2">
-                  Adding your LinkedIn helps personalize suggestions based on your full work history.
+                  We'll scrape your public profile to compare your full work history and LinkedIn skills against the job requirements. Your profile must be public.
                 </p>
               </div>
+
               <div className="flex justify-between mt-8">
                 <Button variant="ghost" onClick={() => navigate("/")}>Cancel</Button>
-                <Button onClick={handleNext}>
-                  Continue <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
+                <div className="flex gap-2">
+                  {linkedinUrl && (
+                    <Button variant="ghost" onClick={() => { setLinkedinUrl(""); setStep(2); }}>
+                      Skip LinkedIn
+                    </Button>
+                  )}
+                  <Button onClick={handleNext}>
+                    {linkedinUrl ? "Continue with LinkedIn" : "Skip for now"}
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </div>
               </div>
             </div>
           )}
@@ -270,7 +289,6 @@ export default function Analyze() {
                   value={jobUrl}
                   onChange={(e) => setJobUrl(e.target.value)}
                   className="h-11"
-                  required
                 />
                 <p className="text-xs text-muted-foreground mt-2">
                   Works with LinkedIn Jobs, Indeed, Greenhouse, Lever, Workday, and most job boards.
@@ -315,17 +333,15 @@ export default function Analyze() {
                   ref={fileInputRef} type="file"
                   accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                   className="hidden"
-                  onChange={handleFileSelect}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) setResumeFile(f); }}
                 />
                 {resumeFile ? (
                   <div className="flex flex-col items-center">
                     <CheckCircle className="w-10 h-10 text-emerald-500 mb-3" />
                     <p className="font-medium text-foreground">{resumeFile.name}</p>
                     <p className="text-sm text-muted-foreground mt-1">{(resumeFile.size / 1024 / 1024).toFixed(2)} MB</p>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setResumeFile(null); }}
-                      className="mt-3 text-xs text-muted-foreground hover:text-destructive flex items-center gap-1 transition-colors"
-                    >
+                    <button onClick={(e) => { e.stopPropagation(); setResumeFile(null); }}
+                      className="mt-3 text-xs text-muted-foreground hover:text-destructive flex items-center gap-1 transition-colors">
                       <X className="w-3 h-3" /> Remove
                     </button>
                   </div>
@@ -347,7 +363,7 @@ export default function Analyze() {
                   {isSubmitting ? (
                     <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Analyzing...</>
                   ) : (
-                    <><Sparkles className="w-4 h-4 mr-2" /> Analyze my resume</>
+                    <><Sparkles className="w-4 h-4 mr-2" /> {linkedinUrl ? "Analyze with LinkedIn" : "Analyze my resume"}</>
                   )}
                 </Button>
               </div>
@@ -355,13 +371,15 @@ export default function Analyze() {
           )}
         </div>
 
-        {(linkedinUrl || jobUrl) && step === 3 && (
+        {/* Summary of inputs */}
+        {step === 3 && (linkedinUrl || jobUrl) && (
           <div className="mt-4 bg-secondary/50 rounded-xl p-4 space-y-2">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Summary</p>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Analysis will include</p>
             {linkedinUrl && (
               <div className="flex items-center gap-2 text-sm">
                 <Linkedin className="w-3.5 h-3.5 text-blue-500 shrink-0" />
                 <span className="text-muted-foreground truncate">{linkedinUrl}</span>
+                <span className="text-xs text-blue-600 font-medium shrink-0">Deep analysis</span>
               </div>
             )}
             {jobUrl && (

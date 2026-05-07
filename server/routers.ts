@@ -24,7 +24,12 @@ import {
   generateCoverLetter,
   benchmarkSkillsForRole,
   brainstormProjects,
+  generateJobRecommendations,
 } from "./analysisService";
+import {
+  scrapeLinkedInProfile,
+  extractLinkedInUsername,
+} from "./linkedinService";
 import { storagePut } from "./storage";
 
 export const appRouter = router({
@@ -41,7 +46,6 @@ export const appRouter = router({
 
   // ─── Resume Analysis (no auth required) ────────────────────────────────
   resume: router({
-    // Start analysis — anonymous, identified by sessionToken from localStorage
     startAnalysis: publicProcedure
       .input(
         z.object({
@@ -54,7 +58,6 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input }) => {
-        // Create pending analysis record
         const analysisId = await createAnalysis({
           sessionToken: input.sessionToken,
           linkedinUrl: input.linkedinUrl,
@@ -79,19 +82,40 @@ export const appRouter = router({
             const { jobTitle, companyName, description: jobDescription } =
               await scrapeJobDescription(input.jobUrl);
 
-            // 4. Run AI analysis (honest scoring)
-            const analysis = await analyzeResume(resumeText, jobDescription, jobTitle, companyName);
+            // 4. Scrape LinkedIn profile (if URL provided) — run in parallel with job scrape
+            let linkedinProfile = null;
+            let linkedinEnriched = 0;
+            if (input.linkedinUrl && extractLinkedInUsername(input.linkedinUrl)) {
+              try {
+                linkedinProfile = await scrapeLinkedInProfile(input.linkedinUrl);
+                if (linkedinProfile) linkedinEnriched = 1;
+              } catch (err) {
+                console.warn("[LinkedIn] Scraping failed, continuing without:", err);
+              }
+            }
 
-            // 5. Benchmark skills from comparable jobs
-            const benchmark = await benchmarkSkillsForRole(jobTitle, companyName, resumeText);
-
-            // 6. Brainstorm projects to close skill gaps
-            const projects = await brainstormProjects(
+            // 5. Run AI analysis (with LinkedIn context if available)
+            const analysis = await analyzeResume(
               resumeText,
+              jobDescription,
               jobTitle,
-              analysis.skillGaps,
-              analysis.missingKeywords
+              companyName,
+              linkedinProfile
             );
+
+            // 6. Run parallel enrichment tasks
+            const [benchmark, projects, jobRecs] = await Promise.all([
+              benchmarkSkillsForRole(jobTitle, companyName, resumeText),
+              brainstormProjects(resumeText, jobTitle, analysis.skillGaps, analysis.missingKeywords),
+              generateJobRecommendations(
+                resumeText,
+                jobTitle,
+                companyName,
+                analysis.matchedKeywords,
+                analysis.skillGaps,
+                linkedinProfile
+              ),
+            ]);
 
             // 7. Save all results
             await updateAnalysis(analysisId, {
@@ -111,6 +135,9 @@ export const appRouter = router({
               benchmarkSkills: benchmark.skills,
               benchmarkSource: benchmark.source,
               projectIdeas: projects,
+              linkedinData: linkedinProfile,
+              linkedinEnriched,
+              jobRecommendations: jobRecs,
               status: "completed",
             });
 
@@ -147,7 +174,6 @@ export const appRouter = router({
         return { analysisId };
       }),
 
-    // Poll analysis status
     getStatus: publicProcedure
       .input(z.object({ analysisId: z.number(), sessionToken: z.string() }))
       .query(async ({ input }) => {
@@ -160,10 +186,10 @@ export const appRouter = router({
           atsScore: analysis.atsScore,
           jobTitle: analysis.jobTitle,
           companyName: analysis.companyName,
+          linkedinEnriched: analysis.linkedinEnriched,
         };
       }),
 
-    // Get full analysis results
     getAnalysis: publicProcedure
       .input(z.object({ analysisId: z.number(), sessionToken: z.string() }))
       .query(async ({ input }) => {
@@ -181,14 +207,12 @@ export const appRouter = router({
         return { analysis, suggestions: suggestionsList, coverLetter };
       }),
 
-    // Get session history
     getHistory: publicProcedure
       .input(z.object({ sessionToken: z.string() }))
       .query(async ({ input }) => {
         return getSessionAnalyses(input.sessionToken);
       }),
 
-    // Update suggestion status
     updateSuggestion: publicProcedure
       .input(
         z.object({
@@ -202,7 +226,6 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    // Regenerate cover letter
     regenerateCoverLetter: publicProcedure
       .input(
         z.object({
@@ -232,7 +255,6 @@ export const appRouter = router({
         return { content };
       }),
 
-    // Regenerate summary
     regenerateSummary: publicProcedure
       .input(z.object({ analysisId: z.number(), sessionToken: z.string() }))
       .mutation(async ({ input }) => {
@@ -245,20 +267,17 @@ export const appRouter = router({
           messages: [
             {
               role: "system",
-              content:
-                "You are an expert resume writer. Rewrite professional summaries to be compelling and tailored to specific roles. Be honest and specific — no fluff.",
+              content: "You are an expert resume writer. Rewrite professional summaries to be compelling and tailored. Be specific, not generic.",
             },
             {
               role: "user",
               content: `Rewrite this professional summary for a ${analysis.jobTitle} role at ${analysis.companyName}.
 
-Original summary:
-${analysis.originalSummary}
+Original: ${analysis.originalSummary}
 
-Job description context:
-${(analysis.jobDescription ?? "").slice(0, 2000)}
+Job context: ${(analysis.jobDescription ?? "").slice(0, 2000)}
 
-Write a 3-4 sentence professional summary that highlights relevant experience, key skills matching the job, and a compelling value proposition. Be specific and quantifiable where possible.`,
+Write a 3-4 sentence summary highlighting relevant experience, key skills, and value proposition.`,
             },
           ],
         });
@@ -268,7 +287,6 @@ Write a 3-4 sentence professional summary that highlights relevant experience, k
         return { rewrittenSummary };
       }),
 
-    // Delete history entry
     deleteHistory: publicProcedure
       .input(z.object({ analysisId: z.number(), sessionToken: z.string() }))
       .mutation(async ({ input }) => {

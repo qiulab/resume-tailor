@@ -59,6 +59,13 @@ export const analyses = mysqlTable("analyses", {
   // Project brainstorming
   projectIdeas: json("projectIdeas"), // ProjectIdea[]
 
+  // LinkedIn enrichment
+  linkedinData: json("linkedinData"),       // LinkedInProfile
+  linkedinEnriched: int("linkedinEnriched").default(0).notNull(), // 0 or 1
+
+  // Job recommendations
+  jobRecommendations: json("jobRecommendations"), // JobRecommendation[]
+
   status: mysqlEnum("status", ["pending", "processing", "completed", "failed"])
     .default("pending")
     .notNull(),

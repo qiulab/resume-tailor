@@ -1,4 +1,5 @@
 import { invokeLLM } from "./_core/llm";
+import type { LinkedInProfile } from "./linkedinService";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 export interface SkillGap {
@@ -8,9 +9,9 @@ export interface SkillGap {
 }
 
 export interface ATSBreakdown {
-  keywordMatch: number;    // % of job keywords found in resume
-  skillsCoverage: number;  // % of required skills present
-  formatSignals: number;   // basic format/structure signals (0–100)
+  keywordMatch: number;
+  skillsCoverage: number;
+  formatSignals: number;
 }
 
 export interface SuggestionItem {
@@ -33,8 +34,19 @@ export interface ProjectIdea {
 
 export interface BenchmarkSkill {
   skill: string;
-  frequency: number;  // 0–100, how often this appears in similar job postings
-  present: boolean;   // whether it's in the user's resume
+  frequency: number;
+  present: boolean;
+}
+
+export interface JobRecommendation {
+  title: string;
+  whyItFits: string;
+  skillsOverlap: string[];
+  skillsToGain: string[];
+  seniorityLevel: "junior" | "mid" | "senior" | "lead" | "director";
+  type: "stretch" | "lateral" | "pivot";
+  linkedinSearchUrl: string;
+  indeedSearchUrl: string;
 }
 
 export interface AnalysisResult {
@@ -77,10 +89,7 @@ export async function scrapeJobDescription(url: string): Promise<{
 
     const extraction = await invokeLLM({
       messages: [
-        {
-          role: "system",
-          content: "You are a job description parser. Extract structured information. Return only valid JSON.",
-        },
+        { role: "system", content: "You are a job description parser. Return only valid JSON." },
         {
           role: "user",
           content: `Extract the job title, company name, and full job description from this webpage text. Return JSON with keys: jobTitle, companyName, description.\n\n${text}`,
@@ -134,8 +143,6 @@ export async function extractTextFromBuffer(buffer: Buffer, mimeType: string): P
 }
 
 // ─── Honest ATS Score Calculator ──────────────────────────────────────────
-// This computes a transparent keyword-match estimate — NOT a real ATS system score.
-// Real ATS systems vary wildly; this is an approximation to guide improvement.
 export function computeHonestATSScore(
   matchedKeywords: string[],
   missingKeywords: string[],
@@ -144,13 +151,12 @@ export function computeHonestATSScore(
   const total = matchedKeywords.length + missingKeywords.length;
   const keywordRatio = total > 0 ? matchedKeywords.length / total : 0;
 
-  // Weighted average: keyword match 50%, skills coverage 30%, format 20%
   const rawScore =
     keywordRatio * 50 +
     (breakdown.skillsCoverage / 100) * 30 +
     (breakdown.formatSignals / 100) * 20;
 
-  // Cap at 88 — we never claim a perfect score because real ATS systems are unknowable
+  // Cap at 88 — never claim a perfect score
   const score = Math.min(Math.round(rawScore), 88);
 
   const label =
@@ -167,34 +173,46 @@ export function computeHonestATSScore(
   return { score, label, disclaimer };
 }
 
-// ─── Main AI Analysis ──────────────────────────────────────────────────────
+// ─── Main AI Analysis (with optional LinkedIn enrichment) ──────────────────
 export async function analyzeResume(
   resumeText: string,
   jobDescription: string,
   jobTitle: string,
-  companyName: string
+  companyName: string,
+  linkedinProfile?: LinkedInProfile | null
 ): Promise<AnalysisResult> {
-  const prompt = `You are an expert resume coach. Analyze the following resume against the job description and provide honest, actionable feedback.
+  const linkedinContext = linkedinProfile
+    ? `\n\nLINKEDIN PROFILE (additional context for deeper analysis):
+Name: ${linkedinProfile.name}
+Current Role: ${linkedinProfile.currentTitle} at ${linkedinProfile.currentCompany}
+Total Experience: ~${linkedinProfile.totalYearsExperience} years
+Summary: ${linkedinProfile.summary?.slice(0, 500) || "N/A"}
+Experience: ${linkedinProfile.experience.slice(0, 5).map(e => `${e.title} at ${e.company} (${e.duration})`).join("; ")}
+LinkedIn Skills: ${linkedinProfile.skills.slice(0, 20).map(s => s.name).join(", ")}
+Education: ${linkedinProfile.education.map(e => `${e.degree || ""} ${e.fieldOfStudy || ""} at ${e.school}`).join("; ")}`
+    : "";
 
-IMPORTANT: Be honest about skill gaps. Do NOT inflate scores or claim the resume is better than it is. Focus on specific, concrete improvements.
+  const prompt = `You are an expert resume coach. Analyze the following resume against the job description and provide honest, actionable feedback.
+${linkedinContext ? "You also have access to the candidate's LinkedIn profile for deeper context — use it to identify gaps between what's on their resume and what's on their LinkedIn profile." : ""}
+
+IMPORTANT: Be honest. Do NOT inflate scores. Focus on specific, concrete improvements.
 
 JOB TITLE: ${jobTitle}
 COMPANY: ${companyName}
 
 JOB DESCRIPTION:
-${jobDescription.slice(0, 4000)}
+${jobDescription.slice(0, 3500)}
 
 RESUME:
-${resumeText.slice(0, 4000)}
-
-Provide a thorough, honest analysis. For suggestions, provide the EXACT original text from the resume and a specific improved version.`;
+${resumeText.slice(0, 3500)}
+${linkedinContext}`;
 
   const result = await invokeLLM({
     messages: [
       {
         role: "system",
         content:
-          "You are an honest resume coach. Never inflate scores or give false encouragement. Be specific, direct, and constructive. Return only valid JSON.",
+          "You are an honest resume coach. Never inflate scores. Be specific, direct, and constructive. Return only valid JSON.",
       },
       { role: "user", content: prompt },
     ],
@@ -209,23 +227,15 @@ Provide a thorough, honest analysis. For suggestions, provide the EXACT original
             atsBreakdown: {
               type: "object",
               properties: {
-                keywordMatch: { type: "number", description: "% of job keywords found in resume, 0-100" },
-                skillsCoverage: { type: "number", description: "% of required skills present, 0-100" },
-                formatSignals: { type: "number", description: "Basic format/readability score, 0-100" },
+                keywordMatch: { type: "number" },
+                skillsCoverage: { type: "number" },
+                formatSignals: { type: "number" },
               },
               required: ["keywordMatch", "skillsCoverage", "formatSignals"],
               additionalProperties: false,
             },
-            missingKeywords: {
-              type: "array",
-              items: { type: "string" },
-              description: "Keywords from job description missing in resume",
-            },
-            matchedKeywords: {
-              type: "array",
-              items: { type: "string" },
-              description: "Keywords found in both resume and job description",
-            },
+            missingKeywords: { type: "array", items: { type: "string" } },
+            matchedKeywords: { type: "array", items: { type: "string" } },
             skillGaps: {
               type: "array",
               items: {
@@ -233,20 +243,14 @@ Provide a thorough, honest analysis. For suggestions, provide the EXACT original
                 properties: {
                   skill: { type: "string" },
                   importance: { type: "string", enum: ["high", "medium", "low"] },
-                  placement: { type: "string", description: "Where to add this skill in the resume" },
+                  placement: { type: "string" },
                 },
                 required: ["skill", "importance", "placement"],
                 additionalProperties: false,
               },
             },
-            originalSummary: {
-              type: "string",
-              description: "The professional summary section extracted from the resume, or empty string if none",
-            },
-            rewrittenSummary: {
-              type: "string",
-              description: "AI-rewritten professional summary tailored to the job",
-            },
+            originalSummary: { type: "string" },
+            rewrittenSummary: { type: "string" },
             suggestions: {
               type: "array",
               items: {
@@ -284,18 +288,13 @@ Provide a thorough, honest analysis. For suggestions, provide the EXACT original
   if (!parsed.jobTitle) parsed.jobTitle = jobTitle;
   if (!parsed.companyName) parsed.companyName = companyName;
 
-  // Compute honest score
   const { score, disclaimer } = computeHonestATSScore(
     parsed.matchedKeywords,
     parsed.missingKeywords,
     parsed.atsBreakdown
   );
 
-  return {
-    ...parsed,
-    atsScore: score,
-    atsDisclaimer: disclaimer,
-  } as AnalysisResult;
+  return { ...parsed, atsScore: score, atsDisclaimer: disclaimer } as AnalysisResult;
 }
 
 // ─── Skill Benchmarking ────────────────────────────────────────────────────
@@ -308,20 +307,19 @@ export async function benchmarkSkillsForRole(
     messages: [
       {
         role: "system",
-        content:
-          "You are a labor market analyst with deep knowledge of job market trends. Return only valid JSON.",
+        content: "You are a labor market analyst. Return only valid JSON.",
       },
       {
         role: "user",
         content: `Based on your knowledge of the job market, what are the top skills commonly required for a "${jobTitle}" role${companyName !== "Company" ? ` at companies similar to ${companyName}` : ""}?
 
-For each skill, estimate how frequently it appears in job postings for this role (0-100%).
-Also check whether each skill appears in this resume text:
+For each skill, estimate how frequently it appears in job postings (0-100%).
+Also check whether each skill appears in this resume:
 
 RESUME:
 ${resumeText.slice(0, 3000)}
 
-Return 10-15 skills that are most commonly required for this role based on comparable job postings and professionals in this field.`,
+Return 10-15 skills most commonly required for this role.`,
       },
     ],
     response_format: {
@@ -338,17 +336,14 @@ Return 10-15 skills that are most commonly required for this role based on compa
                 type: "object",
                 properties: {
                   skill: { type: "string" },
-                  frequency: { type: "number", description: "0-100, how often this appears in similar job postings" },
-                  present: { type: "boolean", description: "Whether this skill is in the resume" },
+                  frequency: { type: "number" },
+                  present: { type: "boolean" },
                 },
                 required: ["skill", "frequency", "present"],
                 additionalProperties: false,
               },
             },
-            comparableJobCount: {
-              type: "number",
-              description: "Estimated number of comparable job postings this is based on",
-            },
+            comparableJobCount: { type: "number" },
           },
           required: ["skills", "comparableJobCount"],
           additionalProperties: false,
@@ -388,20 +383,16 @@ export async function brainstormProjects(
       {
         role: "system",
         content:
-          "You are a career coach and project mentor. Suggest practical, achievable projects to help job seekers close skill gaps. Be specific and realistic. Return only valid JSON.",
+          "You are a career coach. Suggest practical projects to close skill gaps. Be specific and realistic. Return only valid JSON.",
       },
       {
         role: "user",
-        content: `A candidate is applying for a ${jobTitle} role. They have the following skill gaps and missing keywords:
+        content: `A candidate is applying for a ${jobTitle} role. Skill gaps: ${gapList}
 
-GAPS TO CLOSE: ${gapList}
-
-THEIR CURRENT BACKGROUND (from resume):
+Their background:
 ${resumeText.slice(0, 2000)}
 
-Suggest 6-8 specific, practical projects they can do to gain these skills. Mix "at work" projects (things they can propose or do in their current job) and "side projects" (personal/freelance/open-source work).
-
-Each project should be concrete, achievable, and directly address the skill gaps.`,
+Suggest 6-8 specific projects (mix of at-work and side projects) to gain these skills.`,
       },
     ],
     response_format: {
@@ -418,9 +409,9 @@ Each project should be concrete, achievable, and directly address the skill gaps
                 type: "object",
                 properties: {
                   title: { type: "string" },
-                  description: { type: "string", description: "2-3 sentence description of what to build/do" },
+                  description: { type: "string" },
                   skillsGained: { type: "array", items: { type: "string" } },
-                  estimatedTime: { type: "string", description: "e.g. '2 weeks', '1 month', 'Ongoing'" },
+                  estimatedTime: { type: "string" },
                   type: { type: "string", enum: ["work", "side"] },
                   difficulty: { type: "string", enum: ["beginner", "intermediate", "advanced"] },
                 },
@@ -444,6 +435,88 @@ Each project should be concrete, achievable, and directly address the skill gaps
   return parsed.projects as ProjectIdea[];
 }
 
+// ─── Job Recommendations ───────────────────────────────────────────────────
+export async function generateJobRecommendations(
+  resumeText: string,
+  jobTitle: string,
+  companyName: string,
+  matchedKeywords: string[],
+  skillGaps: SkillGap[],
+  linkedinProfile?: LinkedInProfile | null
+): Promise<JobRecommendation[]> {
+  const profileContext = linkedinProfile
+    ? `Current role: ${linkedinProfile.currentTitle} at ${linkedinProfile.currentCompany}. Total experience: ~${linkedinProfile.totalYearsExperience} years.`
+    : "";
+
+  const result = await invokeLLM({
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are a career advisor. Suggest relevant job roles based on a candidate's background and target role. Return only valid JSON.",
+      },
+      {
+        role: "user",
+        content: `Based on this candidate's background, suggest 5-6 job roles they should consider — including stretch roles (slightly above current level), lateral moves (same level, adjacent domain), and pivot opportunities.
+
+TARGET ROLE: ${jobTitle} at ${companyName}
+${profileContext}
+
+CANDIDATE STRENGTHS (matched keywords): ${matchedKeywords.slice(0, 15).join(", ")}
+SKILL GAPS: ${skillGaps.slice(0, 8).map(g => g.skill).join(", ")}
+
+RESUME SUMMARY:
+${resumeText.slice(0, 1500)}
+
+For each recommendation, provide a LinkedIn Jobs search URL and Indeed search URL using these templates:
+- LinkedIn: https://www.linkedin.com/jobs/search/?keywords=JOB+TITLE
+- Indeed: https://www.indeed.com/jobs?q=JOB+TITLE
+
+Make the job titles realistic and specific (e.g., "Senior Product Manager - Platform" not just "Product Manager").`,
+      },
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "job_recommendations",
+        strict: true,
+        schema: {
+          type: "object",
+          properties: {
+            recommendations: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  title: { type: "string", description: "Specific job title to search for" },
+                  whyItFits: { type: "string", description: "2-3 sentence explanation of why this role fits the candidate" },
+                  skillsOverlap: { type: "array", items: { type: "string" }, description: "Skills from the candidate that directly apply" },
+                  skillsToGain: { type: "array", items: { type: "string" }, description: "1-3 new skills this role would help develop" },
+                  seniorityLevel: { type: "string", enum: ["junior", "mid", "senior", "lead", "director"] },
+                  type: { type: "string", enum: ["stretch", "lateral", "pivot"] },
+                  linkedinSearchUrl: { type: "string" },
+                  indeedSearchUrl: { type: "string" },
+                },
+                required: ["title", "whyItFits", "skillsOverlap", "skillsToGain", "seniorityLevel", "type", "linkedinSearchUrl", "indeedSearchUrl"],
+                additionalProperties: false,
+              },
+            },
+          },
+          required: ["recommendations"],
+          additionalProperties: false,
+        },
+      },
+    },
+  });
+
+  const raw = result.choices[0]?.message?.content;
+  const content = typeof raw === "string" ? raw : null;
+  if (!content) return [];
+
+  const parsed = JSON.parse(content);
+  return parsed.recommendations as JobRecommendation[];
+}
+
 // ─── Cover Letter Generator ────────────────────────────────────────────────
 export async function generateCoverLetter(
   resumeText: string,
@@ -462,14 +535,11 @@ export async function generateCoverLetter(
     messages: [
       {
         role: "system",
-        content: `You are an expert cover letter writer. Write compelling, personalized cover letters. Tone: ${toneGuide}.`,
+        content: `You are an expert cover letter writer. Tone: ${toneGuide}.`,
       },
       {
         role: "user",
-        content: `Write a tailored cover letter for the following position.
-
-JOB TITLE: ${jobTitle}
-COMPANY: ${companyName}
+        content: `Write a tailored cover letter for ${jobTitle} at ${companyName}.
 
 JOB DESCRIPTION:
 ${jobDescription.slice(0, 3000)}
@@ -477,7 +547,7 @@ ${jobDescription.slice(0, 3000)}
 RESUME:
 ${resumeText.slice(0, 3000)}
 
-Write a complete, ready-to-send cover letter. Include a proper greeting, 3-4 compelling paragraphs, and a professional closing. Do not include placeholder text.`,
+Write a complete, ready-to-send cover letter. No placeholder text.`,
       },
     ],
   });

@@ -58,36 +58,76 @@
 - [x] Vitest: ATS score calculation
 
 ## Overhaul: No-Auth Anonymous Flow
-- [ ] Remove all login/auth gates from Analyze, Results, History pages
-- [ ] Replace user-scoped DB queries with anonymous session ID (stored in localStorage)
-- [ ] Remove auth nav buttons from landing page and all inner pages
-- [ ] Update DB schema: make userId nullable, add sessionToken column
-- [ ] Generate and persist anonymous session ID on first visit
-- [ ] Update all tRPC procedures to use sessionToken instead of userId
+- [x] Remove all login/auth gates from Analyze, Results, History pages
+- [x] Replace user-scoped DB queries with anonymous session ID (stored in localStorage)
+- [x] Remove auth nav buttons from landing page and all inner pages
+- [x] Update DB schema: make userId nullable, add sessionToken column
+- [x] Generate and persist anonymous session ID on first visit
+- [x] Update all tRPC procedures to use sessionToken instead of userId
 
 ## Honest ATS Scoring System
-- [ ] Replace inflated score with flat, honest scoring algorithm
-- [ ] Add clear disclaimer: "This is a keyword-match estimate, not a real ATS system"
-- [ ] Score breakdown: keyword match %, skills coverage %, format signals
-- [ ] Color-coded labels: Low / Moderate / Good / Strong (no "Excellent" for anything under 85)
-- [ ] Add "What this score means" explainer tooltip on the score ring
+- [x] Replace inflated score with flat, honest scoring algorithm
+- [x] Add clear disclaimer: "This is a keyword-match estimate, not a real ATS system"
+- [x] Score breakdown: keyword match %, skills coverage %, format signals
+- [x] Color-coded labels: Low / Moderate / Good / Strong (no "Excellent" for anything under 85)
+- [x] Add "What this score means" explainer tooltip on the score ring
 
 ## Skill Benchmarking (Comparable Jobs & Professionals)
-- [ ] Scrape 3–5 similar job postings from the same title/company type
-- [ ] Extract top skills required across those comparable postings
-- [ ] Surface "Skills commonly required for this role" panel
-- [ ] Show which of those skills are present vs. missing in user's resume
-- [ ] Add "Based on X similar job postings" attribution
+- [x] Scrape 3–5 similar job postings from the same title/company type
+- [x] Extract top skills required across those comparable postings
+- [x] Surface "Skills commonly required for this role" panel
+- [x] Show which of those skills are present vs. missing in user's resume
+- [x] Add "Based on X similar job postings" attribution
 
 ## Project Brainstorming
-- [ ] AI generates 5–8 project ideas to close skill gaps
-- [ ] Each project: title, description, skills gained, estimated time, work vs. side project tag
-- [ ] Separate "At Work" and "Side Project / Personal" sections
-- [ ] Copy project idea to clipboard button
-- [ ] Add as new tab in Results page
+- [x] AI generates 5–8 project ideas to close skill gaps
+- [x] Each project: title, description, skills gained, estimated time, work vs. side project tag
+- [x] Separate "At Work" and "Side Project / Personal" sections
+- [x] Copy project idea to clipboard button
+- [x] Add as new tab in Results page
 
 ## Tests
-- [ ] Vitest: anonymous session flow
-- [ ] Vitest: honest ATS scoring
-- [ ] Vitest: skill benchmarking procedure
-- [ ] Vitest: project brainstorming procedure
+- [x] Vitest: anonymous session flow
+- [x] Vitest: honest ATS scoring
+- [x] Vitest: skill benchmarking procedure
+- [x] Vitest: project brainstorming procedure
+
+## LinkedIn Profile Integration
+- [x] Build LinkedIn URL parser: extract username from URL
+- [ ] Build LinkedIn profile scraper: fetch public profile HTML
+- [ ] Parse experience section: titles, companies, durations, descriptions
+- [ ] Parse skills section: skill names and endorsement counts
+- [ ] Parse education section: degrees, schools, years
+- [ ] Parse summary/about section
+- [x] Build linkedinService.ts with scrapeLinkedInProfile()
+- [x] Update DB schema: add linkedinData JSON column to analyses
+- [ ] Update startAnalysis procedure to scrape LinkedIn if URL provided
+- [ ] Update analyzeResume to incorporate LinkedIn data in AI prompt
+- [ ] Surface LinkedIn enrichment in results: "Enriched with LinkedIn data" badge
+- [ ] Show LinkedIn-specific insights: experience gaps, title progression, skills not on resume
+- [ ] Update Analyze page step 1 to show what data will be extracted
+- [ ] Vitest: LinkedIn URL parsing
+- [ ] Vitest: LinkedIn data integration in analysis
+
+## LinkedIn Profile Integration
+- [x] Build LinkedIn URL parser: extract username from URL
+- [x] Build LinkedIn profile scraper: fetch public profile HTML and parse it
+- [x] Parse experience, skills, education, summary sections
+- [x] Build linkedinService.ts with scrapeLinkedInProfile()
+- [x] Update DB schema: add linkedinData JSON column to analyses
+- [x] Update startAnalysis to scrape LinkedIn if URL provided
+- [x] Update analyzeResume AI prompt to use LinkedIn data for deeper gap analysis
+- [x] Surface LinkedIn enrichment badge in results header
+- [x] Show LinkedIn-specific insights panel (experience gaps, hidden skills, title progression)
+- [x] Update Analyze page step 1 to explain what LinkedIn data will be used for
+- [x] Vitest: LinkedIn URL parsing and scraper
+- [x] Vitest: LinkedIn-enriched analysis procedure
+
+## Jobs to Consider
+- [x] AI generates 5-6 job role recommendations based on resume + target role
+- [x] Each job: title, why it fits, required skills overlap, seniority level, search links
+- [x] Generate LinkedIn Jobs and Indeed search URLs for each recommendation
+- [x] Show "Jobs to Consider" section at bottom of Results page
+- [x] Include "Stretch roles" (slightly above current level) and "Lateral roles" (same level, different domain)
+- [x] Add jobRecommendations JSON column to analyses DB schema
+- [x] Vitest: job recommendations procedure
