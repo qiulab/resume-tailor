@@ -1,17 +1,16 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import {
+  int,
+  mysqlEnum,
+  mysqlTable,
+  text,
+  timestamp,
+  varchar,
+  float,
+  json,
+} from "drizzle-orm/mysql-core";
 
-/**
- * Core user table backing auth flow.
- * Extend this file with additional tables as your product grows.
- * Columns use camelCase to match both database fields and generated types.
- */
 export const users = mysqlTable("users", {
-  /**
-   * Surrogate primary key. Auto-incremented numeric value managed by the database.
-   * Use this for relations between tables.
-   */
   id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
@@ -25,4 +24,68 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-// TODO: Add your tables here
+// ─── Resume Analyses ───────────────────────────────────────────────────────
+export const analyses = mysqlTable("analyses", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  sessionId: varchar("sessionId", { length: 128 }).notNull(),
+
+  // Inputs
+  linkedinUrl: text("linkedinUrl"),
+  jobUrl: text("jobUrl"),
+  jobTitle: text("jobTitle"),
+  companyName: text("companyName"),
+  jobDescription: text("jobDescription"),
+  resumeFileKey: text("resumeFileKey"),
+  resumeFileName: text("resumeFileName"),
+  resumeText: text("resumeText"),
+
+  // Analysis results
+  atsScore: float("atsScore"),
+  atsBreakdown: json("atsBreakdown"),       // { keywords: number, format: number, skills: number }
+  missingKeywords: json("missingKeywords"),  // string[]
+  matchedKeywords: json("matchedKeywords"),  // string[]
+  skillGaps: json("skillGaps"),             // { skill: string, importance: 'high'|'medium'|'low' }[]
+  rewrittenSummary: text("rewrittenSummary"),
+  originalSummary: text("originalSummary"),
+
+  status: mysqlEnum("status", ["pending", "processing", "completed", "failed"])
+    .default("pending")
+    .notNull(),
+
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Analysis = typeof analyses.$inferSelect;
+export type InsertAnalysis = typeof analyses.$inferInsert;
+
+// ─── Inline Suggestions ────────────────────────────────────────────────────
+export const suggestions = mysqlTable("suggestions", {
+  id: int("id").autoincrement().primaryKey(),
+  analysisId: int("analysisId").notNull(),
+  section: varchar("section", { length: 128 }).notNull(), // e.g. "experience", "skills", "summary"
+  originalText: text("originalText").notNull(),
+  suggestedText: text("suggestedText").notNull(),
+  reason: text("reason"),
+  impact: mysqlEnum("impact", ["high", "medium", "low"]).default("medium").notNull(),
+  status: mysqlEnum("status", ["pending", "accepted", "rejected"]).default("pending").notNull(),
+  sortOrder: int("sortOrder").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type Suggestion = typeof suggestions.$inferSelect;
+export type InsertSuggestion = typeof suggestions.$inferInsert;
+
+// ─── Cover Letters ─────────────────────────────────────────────────────────
+export const coverLetters = mysqlTable("coverLetters", {
+  id: int("id").autoincrement().primaryKey(),
+  analysisId: int("analysisId").notNull(),
+  content: text("content").notNull(),
+  tone: mysqlEnum("tone", ["professional", "enthusiastic", "concise"]).default("professional").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CoverLetter = typeof coverLetters.$inferSelect;
+export type InsertCoverLetter = typeof coverLetters.$inferInsert;
