@@ -94,20 +94,20 @@
 
 ## LinkedIn Profile Integration
 - [x] Build LinkedIn URL parser: extract username from URL
-- [ ] Build LinkedIn profile scraper: fetch public profile HTML
-- [ ] Parse experience section: titles, companies, durations, descriptions
-- [ ] Parse skills section: skill names and endorsement counts
-- [ ] Parse education section: degrees, schools, years
-- [ ] Parse summary/about section
+- [x] Build LinkedIn profile scraper: fetch public profile HTML
+- [x] Parse experience section: titles, companies, durations, descriptions
+- [x] Parse skills section: skill names and endorsement counts
+- [x] Parse education section: degrees, schools, years
+- [x] Parse summary/about section
 - [x] Build linkedinService.ts with scrapeLinkedInProfile()
 - [x] Update DB schema: add linkedinData JSON column to analyses
-- [ ] Update startAnalysis procedure to scrape LinkedIn if URL provided
-- [ ] Update analyzeResume to incorporate LinkedIn data in AI prompt
-- [ ] Surface LinkedIn enrichment in results: "Enriched with LinkedIn data" badge
-- [ ] Show LinkedIn-specific insights: experience gaps, title progression, skills not on resume
-- [ ] Update Analyze page step 1 to show what data will be extracted
-- [ ] Vitest: LinkedIn URL parsing
-- [ ] Vitest: LinkedIn data integration in analysis
+- [x] Update startAnalysis procedure to scrape LinkedIn if URL provided
+- [x] Update analyzeResume to incorporate LinkedIn data in AI prompt
+- [x] Surface LinkedIn enrichment in results: "Enriched with LinkedIn data" badge
+- [x] Show LinkedIn-specific insights: experience gaps, title progression, skills not on resume
+- [x] Update Analyze page step 1 to show what data will be extracted
+- [x] Vitest: LinkedIn URL parsing
+- [x] Vitest: LinkedIn data integration in analysis
 
 ## LinkedIn Profile Integration
 - [x] Build LinkedIn URL parser: extract username from URL
