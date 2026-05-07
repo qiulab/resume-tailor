@@ -67,7 +67,7 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// ─── Analyses ──────────────────────────────────────────────────────────────
+// ─── Analyses (anonymous session-based) ───────────────────────────────────
 export async function createAnalysis(data: InsertAnalysis) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -88,13 +88,13 @@ export async function getAnalysisById(id: number) {
   return result[0];
 }
 
-export async function getUserAnalyses(userId: number) {
+export async function getSessionAnalyses(sessionToken: string) {
   const db = await getDb();
   if (!db) return [];
   return db
     .select()
     .from(analyses)
-    .where(and(eq(analyses.userId, userId), eq(analyses.status, "completed")))
+    .where(and(eq(analyses.sessionToken, sessionToken), eq(analyses.status, "completed")))
     .orderBy(desc(analyses.createdAt))
     .limit(20);
 }
@@ -151,12 +151,11 @@ export async function updateCoverLetter(id: number, content: string) {
   await db.update(coverLetters).set({ content }).where(eq(coverLetters.id, id));
 }
 
-export async function deleteAnalysis(id: number, userId: number) {
+export async function deleteAnalysis(id: number, sessionToken: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  // Verify ownership before deleting
   const existing = await db.select().from(analyses).where(eq(analyses.id, id)).limit(1);
-  if (!existing[0] || existing[0].userId !== userId) {
+  if (!existing[0] || existing[0].sessionToken !== sessionToken) {
     throw new Error("Not found or unauthorized");
   }
   await db.delete(suggestions).where(eq(suggestions.analysisId, id));

@@ -1,13 +1,12 @@
 import { useState, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
-import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
-import { getLoginUrl } from "@/const";
+import { useSession } from "@/hooks/useSession";
 import {
   FileText,
   Link2,
@@ -40,9 +39,17 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
+const PROCESSING_STEPS = [
+  "Uploading resume...",
+  "Reading job description...",
+  "Running AI analysis...",
+  "Benchmarking similar roles...",
+  "Brainstorming projects...",
+];
+
 export default function Analyze() {
-  const { isAuthenticated, loading } = useAuth();
   const [, navigate] = useLocation();
+  const sessionToken = useSession();
   const [step, setStep] = useState(1);
   const [linkedinUrl, setLinkedinUrl] = useState("");
   const [jobUrl, setJobUrl] = useState("");
@@ -54,19 +61,8 @@ export default function Analyze() {
 
   const startAnalysis = trpc.resume.startAnalysis.useMutation();
 
-  // Redirect to login if not authenticated
-  if (!loading && !isAuthenticated) {
-    window.location.href = getLoginUrl();
-    return null;
-  }
-
   const validateJobUrl = (url: string) => {
-    try {
-      new URL(url);
-      return true;
-    } catch {
-      return false;
-    }
+    try { new URL(url); return true; } catch { return false; }
   };
 
   const handleNext = () => {
@@ -93,46 +89,47 @@ export default function Analyze() {
     if (file) setResumeFile(file);
   };
 
+  // Simulate progress steps while processing
+  const simulateProgress = () => {
+    let current = 0;
+    const interval = setInterval(() => {
+      current++;
+      if (current < PROCESSING_STEPS.length) {
+        setProcessingStep(current);
+      } else {
+        clearInterval(interval);
+      }
+    }, 8000);
+    return interval;
+  };
+
   const handleSubmit = async () => {
-    if (!resumeFile) {
-      toast.error("Please upload your resume");
-      return;
-    }
-    if (!validateJobUrl(jobUrl)) {
-      toast.error("Please enter a valid job posting URL");
-      return;
-    }
+    if (!resumeFile) { toast.error("Please upload your resume"); return; }
+    if (!validateJobUrl(jobUrl)) { toast.error("Please enter a valid job posting URL"); return; }
 
     setIsSubmitting(true);
-    setProcessingStep(1);
+    setProcessingStep(0);
+    const progressInterval = simulateProgress();
 
     try {
       const base64 = await fileToBase64(resumeFile);
-      setProcessingStep(2);
-
       const { analysisId } = await startAnalysis.mutateAsync({
+        sessionToken,
         linkedinUrl: linkedinUrl || undefined,
         jobUrl,
         resumeBase64: base64,
         resumeFileName: resumeFile.name,
         resumeMimeType: resumeFile.type || "application/pdf",
       });
-
-      setProcessingStep(3);
+      clearInterval(progressInterval);
       navigate(`/results/${analysisId}`);
     } catch (err: any) {
+      clearInterval(progressInterval);
       toast.error(err?.message ?? "Failed to start analysis. Please try again.");
       setIsSubmitting(false);
       setProcessingStep(0);
     }
   };
-
-  const PROCESSING_STEPS = [
-    "Uploading resume...",
-    "Scraping job description...",
-    "Running AI analysis...",
-    "Generating suggestions...",
-  ];
 
   if (isSubmitting) {
     return (
@@ -145,9 +142,8 @@ export default function Analyze() {
             Analyzing your resume
           </h2>
           <p className="text-muted-foreground mb-8 text-sm">
-            Our AI is working through your resume and the job description. This takes about 30–60 seconds.
+            Our AI is working through your resume and the job description. This takes about 30–90 seconds.
           </p>
-
           <div className="space-y-3 mb-8">
             {PROCESSING_STEPS.map((s, i) => (
               <div key={s} className="flex items-center gap-3 text-sm">
@@ -158,13 +154,14 @@ export default function Analyze() {
                 ) : (
                   <div className="w-4 h-4 rounded-full border border-border shrink-0" />
                 )}
-                <span className={i < processingStep ? "text-muted-foreground line-through" : i === processingStep ? "text-foreground font-medium" : "text-muted-foreground"}>
-                  {s}
-                </span>
+                <span className={
+                  i < processingStep ? "text-muted-foreground line-through" :
+                  i === processingStep ? "text-foreground font-medium" :
+                  "text-muted-foreground"
+                }>{s}</span>
               </div>
             ))}
           </div>
-
           <Progress value={(processingStep / PROCESSING_STEPS.length) * 100} className="h-1.5" />
         </div>
       </div>
@@ -176,10 +173,7 @@ export default function Analyze() {
       {/* Nav */}
       <nav className="border-b border-border/60 bg-background/80 backdrop-blur-xl">
         <div className="container flex items-center justify-between h-16">
-          <button
-            onClick={() => navigate("/")}
-            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-          >
+          <button onClick={() => navigate("/")} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center">
               <FileText className="w-3.5 h-3.5 text-primary-foreground" />
             </div>
@@ -198,15 +192,11 @@ export default function Analyze() {
             {STEPS.map((s, i) => (
               <div key={s.id} className="flex items-center flex-1">
                 <div className="flex flex-col items-center">
-                  <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium transition-all ${
-                      step > s.id
-                        ? "bg-emerald-500 text-white"
-                        : step === s.id
-                        ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
-                        : "bg-secondary text-muted-foreground"
-                    }`}
-                  >
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium transition-all ${
+                    step > s.id ? "bg-emerald-500 text-white" :
+                    step === s.id ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25" :
+                    "bg-secondary text-muted-foreground"
+                  }`}>
                     {step > s.id ? <CheckCircle className="w-4.5 h-4.5" /> : s.id}
                   </div>
                   <span className={`text-xs mt-2 font-medium ${step === s.id ? "text-foreground" : "text-muted-foreground"}`}>
@@ -221,7 +211,6 @@ export default function Analyze() {
           </div>
         </div>
 
-        {/* Step content */}
         <div className="bg-card border border-border rounded-2xl p-8 shadow-sm">
           {/* Step 1: LinkedIn */}
           {step === 1 && (
@@ -235,33 +224,25 @@ export default function Analyze() {
                   <p className="text-sm text-muted-foreground">Optional — skip if you prefer</p>
                 </div>
               </div>
-
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="linkedin" className="text-sm font-medium text-foreground mb-2 block">
-                    LinkedIn Profile URL
-                  </Label>
-                  <Input
-                    id="linkedin"
-                    type="url"
-                    placeholder="https://linkedin.com/in/your-profile"
-                    value={linkedinUrl}
-                    onChange={(e) => setLinkedinUrl(e.target.value)}
-                    className="h-11"
-                  />
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Adding your LinkedIn helps us personalize suggestions based on your full work history.
-                  </p>
-                </div>
+              <div>
+                <Label htmlFor="linkedin" className="text-sm font-medium text-foreground mb-2 block">
+                  LinkedIn Profile URL
+                </Label>
+                <Input
+                  id="linkedin" type="url"
+                  placeholder="https://linkedin.com/in/your-profile"
+                  value={linkedinUrl}
+                  onChange={(e) => setLinkedinUrl(e.target.value)}
+                  className="h-11"
+                />
+                <p className="text-xs text-muted-foreground mt-2">
+                  Adding your LinkedIn helps personalize suggestions based on your full work history.
+                </p>
               </div>
-
               <div className="flex justify-between mt-8">
-                <Button variant="ghost" onClick={() => navigate("/")}>
-                  Cancel
-                </Button>
+                <Button variant="ghost" onClick={() => navigate("/")}>Cancel</Button>
                 <Button onClick={handleNext}>
-                  Continue
-                  <ArrowRight className="w-4 h-4 ml-2" />
+                  Continue <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
               </div>
             </div>
@@ -279,35 +260,28 @@ export default function Analyze() {
                   <p className="text-sm text-muted-foreground">Paste the link to the job you're targeting</p>
                 </div>
               </div>
-
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="jobUrl" className="text-sm font-medium text-foreground mb-2 block">
-                    Job Posting URL <span className="text-destructive">*</span>
-                  </Label>
-                  <Input
-                    id="jobUrl"
-                    type="url"
-                    placeholder="https://jobs.company.com/position/123"
-                    value={jobUrl}
-                    onChange={(e) => setJobUrl(e.target.value)}
-                    className="h-11"
-                    required
-                  />
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Works with LinkedIn Jobs, Indeed, Greenhouse, Lever, Workday, and most job boards.
-                  </p>
-                </div>
+              <div>
+                <Label htmlFor="jobUrl" className="text-sm font-medium text-foreground mb-2 block">
+                  Job Posting URL <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="jobUrl" type="url"
+                  placeholder="https://jobs.company.com/position/123"
+                  value={jobUrl}
+                  onChange={(e) => setJobUrl(e.target.value)}
+                  className="h-11"
+                  required
+                />
+                <p className="text-xs text-muted-foreground mt-2">
+                  Works with LinkedIn Jobs, Indeed, Greenhouse, Lever, Workday, and most job boards.
+                </p>
               </div>
-
               <div className="flex justify-between mt-8">
                 <Button variant="ghost" onClick={() => setStep(1)}>
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  Back
+                  <ArrowLeft className="w-4 h-4 mr-2" /> Back
                 </Button>
                 <Button onClick={handleNext} disabled={!jobUrl}>
-                  Continue
-                  <ArrowRight className="w-4 h-4 ml-2" />
+                  Continue <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
               </div>
             </div>
@@ -326,79 +300,54 @@ export default function Analyze() {
                 </div>
               </div>
 
-              {/* Drop zone */}
               <div
                 onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                 onDragLeave={() => setIsDragging(false)}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
                 className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-all ${
-                  isDragging
-                    ? "border-primary bg-primary/5"
-                    : resumeFile
-                    ? "border-emerald-300 bg-emerald-50"
-                    : "border-border hover:border-primary/50 hover:bg-secondary/50"
+                  isDragging ? "border-primary bg-primary/5" :
+                  resumeFile ? "border-emerald-300 bg-emerald-50" :
+                  "border-border hover:border-primary/50 hover:bg-secondary/50"
                 }`}
               >
                 <input
-                  ref={fileInputRef}
-                  type="file"
+                  ref={fileInputRef} type="file"
                   accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                   className="hidden"
                   onChange={handleFileSelect}
                 />
-
                 {resumeFile ? (
                   <div className="flex flex-col items-center">
                     <CheckCircle className="w-10 h-10 text-emerald-500 mb-3" />
                     <p className="font-medium text-foreground">{resumeFile.name}</p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {(resumeFile.size / 1024 / 1024).toFixed(2)} MB
-                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">{(resumeFile.size / 1024 / 1024).toFixed(2)} MB</p>
                     <button
                       onClick={(e) => { e.stopPropagation(); setResumeFile(null); }}
                       className="mt-3 text-xs text-muted-foreground hover:text-destructive flex items-center gap-1 transition-colors"
                     >
-                      <X className="w-3 h-3" />
-                      Remove
+                      <X className="w-3 h-3" /> Remove
                     </button>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center">
                     <Upload className="w-10 h-10 text-muted-foreground mb-3" />
-                    <p className="font-medium text-foreground mb-1">
-                      Drop your resume here
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      or <span className="text-primary">browse files</span>
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-3">
-                      Supports PDF and DOCX
-                    </p>
+                    <p className="font-medium text-foreground mb-1">Drop your resume here</p>
+                    <p className="text-sm text-muted-foreground">or <span className="text-primary">browse files</span></p>
+                    <p className="text-xs text-muted-foreground mt-3">Supports PDF and DOCX</p>
                   </div>
                 )}
               </div>
 
               <div className="flex justify-between mt-8">
                 <Button variant="ghost" onClick={() => setStep(2)}>
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  Back
+                  <ArrowLeft className="w-4 h-4 mr-2" /> Back
                 </Button>
-                <Button
-                  onClick={handleSubmit}
-                  disabled={!resumeFile || isSubmitting}
-                  className="shadow-lg shadow-primary/20"
-                >
+                <Button onClick={handleSubmit} disabled={!resumeFile || isSubmitting} className="shadow-lg shadow-primary/20">
                   {isSubmitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Analyzing...
-                    </>
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Analyzing...</>
                   ) : (
-                    <>
-                      <Sparkles className="w-4 h-4 mr-2" />
-                      Analyze my resume
-                    </>
+                    <><Sparkles className="w-4 h-4 mr-2" /> Analyze my resume</>
                   )}
                 </Button>
               </div>
@@ -406,7 +355,6 @@ export default function Analyze() {
           )}
         </div>
 
-        {/* Summary of inputs */}
         {(linkedinUrl || jobUrl) && step === 3 && (
           <div className="mt-4 bg-secondary/50 rounded-xl p-4 space-y-2">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Summary</p>

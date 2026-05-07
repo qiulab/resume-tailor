@@ -2,13 +2,13 @@ import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
+import { publicProcedure, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import {
   createAnalysis,
   updateAnalysis,
   getAnalysisById,
-  getUserAnalyses,
+  getSessionAnalyses,
   createSuggestions,
   getSuggestionsByAnalysisId,
   updateSuggestionStatus,
@@ -22,6 +22,8 @@ import {
   extractTextFromBuffer,
   analyzeResume,
   generateCoverLetter,
+  benchmarkSkillsForRole,
+  brainstormProjects,
 } from "./analysisService";
 import { storagePut } from "./storage";
 
@@ -37,12 +39,13 @@ export const appRouter = router({
     }),
   }),
 
-  // ─── Resume Analysis ────────────────────────────────────────────────────
+  // ─── Resume Analysis (no auth required) ────────────────────────────────
   resume: router({
-    // Upload resume file and start analysis
-    startAnalysis: protectedProcedure
+    // Start analysis — anonymous, identified by sessionToken from localStorage
+    startAnalysis: publicProcedure
       .input(
         z.object({
+          sessionToken: z.string().min(1),
           linkedinUrl: z.string().optional(),
           jobUrl: z.string().url("Please enter a valid job posting URL"),
           resumeBase64: z.string(),
@@ -50,26 +53,23 @@ export const appRouter = router({
           resumeMimeType: z.string(),
         })
       )
-      .mutation(async ({ ctx, input }) => {
-        const userId = ctx.user.id;
-        const sessionId = ctx.user.openId;
-
+      .mutation(async ({ input }) => {
         // Create pending analysis record
         const analysisId = await createAnalysis({
-          userId,
-          sessionId,
+          sessionToken: input.sessionToken,
           linkedinUrl: input.linkedinUrl,
           jobUrl: input.jobUrl,
           resumeFileName: input.resumeFileName,
           status: "processing",
         });
 
-        // Process asynchronously (fire and forget with error handling)
+        // Process asynchronously
         (async () => {
           try {
-            // 1. Upload resume to storage
             const buffer = Buffer.from(input.resumeBase64, "base64");
-            const fileKey = `resumes/${userId}/${Date.now()}-${input.resumeFileName}`;
+
+            // 1. Upload resume to storage
+            const fileKey = `resumes/${input.sessionToken}/${Date.now()}-${input.resumeFileName}`;
             const { key } = await storagePut(fileKey, buffer, input.resumeMimeType);
 
             // 2. Extract text from resume
@@ -79,15 +79,21 @@ export const appRouter = router({
             const { jobTitle, companyName, description: jobDescription } =
               await scrapeJobDescription(input.jobUrl);
 
-            // 4. Run AI analysis
-            const analysis = await analyzeResume(
+            // 4. Run AI analysis (honest scoring)
+            const analysis = await analyzeResume(resumeText, jobDescription, jobTitle, companyName);
+
+            // 5. Benchmark skills from comparable jobs
+            const benchmark = await benchmarkSkillsForRole(jobTitle, companyName, resumeText);
+
+            // 6. Brainstorm projects to close skill gaps
+            const projects = await brainstormProjects(
               resumeText,
-              jobDescription,
               jobTitle,
-              companyName
+              analysis.skillGaps,
+              analysis.missingKeywords
             );
 
-            // 5. Save analysis results
+            // 7. Save all results
             await updateAnalysis(analysisId, {
               resumeFileKey: key,
               resumeText,
@@ -96,15 +102,19 @@ export const appRouter = router({
               companyName: analysis.companyName,
               atsScore: analysis.atsScore,
               atsBreakdown: analysis.atsBreakdown,
+              atsDisclaimer: analysis.atsDisclaimer,
               missingKeywords: analysis.missingKeywords,
               matchedKeywords: analysis.matchedKeywords,
               skillGaps: analysis.skillGaps,
               originalSummary: analysis.originalSummary,
               rewrittenSummary: analysis.rewrittenSummary,
+              benchmarkSkills: benchmark.skills,
+              benchmarkSource: benchmark.source,
+              projectIdeas: projects,
               status: "completed",
             });
 
-            // 6. Save suggestions
+            // 8. Save suggestions
             if (analysis.suggestions.length > 0) {
               await createSuggestions(
                 analysis.suggestions.map((s) => ({
@@ -119,7 +129,7 @@ export const appRouter = router({
               );
             }
 
-            // 7. Generate cover letter
+            // 9. Generate cover letter
             const coverLetterContent = await generateCoverLetter(
               resumeText,
               jobDescription,
@@ -127,11 +137,7 @@ export const appRouter = router({
               analysis.companyName,
               "professional"
             );
-            await createCoverLetter({
-              analysisId,
-              content: coverLetterContent,
-              tone: "professional",
-            });
+            await createCoverLetter({ analysisId, content: coverLetterContent, tone: "professional" });
           } catch (err) {
             console.error("[startAnalysis] Processing error:", err);
             await updateAnalysis(analysisId, { status: "failed" });
@@ -142,11 +148,11 @@ export const appRouter = router({
       }),
 
     // Poll analysis status
-    getStatus: protectedProcedure
-      .input(z.object({ analysisId: z.number() }))
-      .query(async ({ ctx, input }) => {
+    getStatus: publicProcedure
+      .input(z.object({ analysisId: z.number(), sessionToken: z.string() }))
+      .query(async ({ input }) => {
         const analysis = await getAnalysisById(input.analysisId);
-        if (!analysis || analysis.userId !== ctx.user.id) {
+        if (!analysis || analysis.sessionToken !== input.sessionToken) {
           throw new TRPCError({ code: "NOT_FOUND" });
         }
         return {
@@ -158,40 +164,37 @@ export const appRouter = router({
       }),
 
     // Get full analysis results
-    getAnalysis: protectedProcedure
-      .input(z.object({ analysisId: z.number() }))
-      .query(async ({ ctx, input }) => {
+    getAnalysis: publicProcedure
+      .input(z.object({ analysisId: z.number(), sessionToken: z.string() }))
+      .query(async ({ input }) => {
         const analysis = await getAnalysisById(input.analysisId);
-        if (!analysis || analysis.userId !== ctx.user.id) {
+        if (!analysis || analysis.sessionToken !== input.sessionToken) {
           throw new TRPCError({ code: "NOT_FOUND" });
         }
         if (analysis.status !== "completed") {
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Analysis not ready" });
         }
-
         const [suggestionsList, coverLetter] = await Promise.all([
           getSuggestionsByAnalysisId(input.analysisId),
           getCoverLetterByAnalysisId(input.analysisId),
         ]);
-
-        return {
-          analysis,
-          suggestions: suggestionsList,
-          coverLetter,
-        };
+        return { analysis, suggestions: suggestionsList, coverLetter };
       }),
 
-    // Get user's analysis history
-    getHistory: protectedProcedure.query(async ({ ctx }) => {
-      return getUserAnalyses(ctx.user.id);
-    }),
+    // Get session history
+    getHistory: publicProcedure
+      .input(z.object({ sessionToken: z.string() }))
+      .query(async ({ input }) => {
+        return getSessionAnalyses(input.sessionToken);
+      }),
 
-    // Update suggestion status (accept/reject)
-    updateSuggestion: protectedProcedure
+    // Update suggestion status
+    updateSuggestion: publicProcedure
       .input(
         z.object({
           suggestionId: z.number(),
           status: z.enum(["pending", "accepted", "rejected"]),
+          sessionToken: z.string(),
         })
       )
       .mutation(async ({ input }) => {
@@ -199,20 +202,20 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    // Regenerate cover letter with different tone
-    regenerateCoverLetter: protectedProcedure
+    // Regenerate cover letter
+    regenerateCoverLetter: publicProcedure
       .input(
         z.object({
           analysisId: z.number(),
+          sessionToken: z.string(),
           tone: z.enum(["professional", "enthusiastic", "concise"]),
         })
       )
-      .mutation(async ({ ctx, input }) => {
+      .mutation(async ({ input }) => {
         const analysis = await getAnalysisById(input.analysisId);
-        if (!analysis || analysis.userId !== ctx.user.id) {
+        if (!analysis || analysis.sessionToken !== input.sessionToken) {
           throw new TRPCError({ code: "NOT_FOUND" });
         }
-
         const content = await generateCoverLetter(
           analysis.resumeText ?? "",
           analysis.jobDescription ?? "",
@@ -220,41 +223,30 @@ export const appRouter = router({
           analysis.companyName ?? "Company",
           input.tone
         );
-
         const existing = await getCoverLetterByAnalysisId(input.analysisId);
         if (existing) {
           await updateCoverLetter(existing.id, content);
         } else {
           await createCoverLetter({ analysisId: input.analysisId, content, tone: input.tone });
         }
-
         return { content };
       }),
 
-    // Delete an analysis from history
-    deleteHistory: protectedProcedure
-      .input(z.object({ analysisId: z.number() }))
-      .mutation(async ({ ctx, input }) => {
-        await deleteAnalysis(input.analysisId, ctx.user.id);
-        return { success: true };
-      }),
-
-    // Regenerate professional summary
-    regenerateSummary: protectedProcedure
-      .input(z.object({ analysisId: z.number() }))
-      .mutation(async ({ ctx, input }) => {
+    // Regenerate summary
+    regenerateSummary: publicProcedure
+      .input(z.object({ analysisId: z.number(), sessionToken: z.string() }))
+      .mutation(async ({ input }) => {
         const analysis = await getAnalysisById(input.analysisId);
-        if (!analysis || analysis.userId !== ctx.user.id) {
+        if (!analysis || analysis.sessionToken !== input.sessionToken) {
           throw new TRPCError({ code: "NOT_FOUND" });
         }
-
         const { invokeLLM } = await import("./_core/llm");
         const result = await invokeLLM({
           messages: [
             {
               role: "system",
               content:
-                "You are an expert resume writer. Rewrite professional summaries to be compelling, ATS-optimized, and tailored to specific roles.",
+                "You are an expert resume writer. Rewrite professional summaries to be compelling and tailored to specific roles. Be honest and specific — no fluff.",
             },
             {
               role: "user",
@@ -270,11 +262,18 @@ Write a 3-4 sentence professional summary that highlights relevant experience, k
             },
           ],
         });
-
         const raw = result.choices[0]?.message?.content;
         const rewrittenSummary = typeof raw === "string" ? raw : "";
         await updateAnalysis(input.analysisId, { rewrittenSummary });
         return { rewrittenSummary };
+      }),
+
+    // Delete history entry
+    deleteHistory: publicProcedure
+      .input(z.object({ analysisId: z.number(), sessionToken: z.string() }))
+      .mutation(async ({ input }) => {
+        await deleteAnalysis(input.analysisId, input.sessionToken);
+        return { success: true };
       }),
   }),
 });

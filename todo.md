@@ -56,3 +56,38 @@
 - [x] Vitest: resume analysis procedure
 - [x] Vitest: cover letter generation procedure
 - [x] Vitest: ATS score calculation
+
+## Overhaul: No-Auth Anonymous Flow
+- [ ] Remove all login/auth gates from Analyze, Results, History pages
+- [ ] Replace user-scoped DB queries with anonymous session ID (stored in localStorage)
+- [ ] Remove auth nav buttons from landing page and all inner pages
+- [ ] Update DB schema: make userId nullable, add sessionToken column
+- [ ] Generate and persist anonymous session ID on first visit
+- [ ] Update all tRPC procedures to use sessionToken instead of userId
+
+## Honest ATS Scoring System
+- [ ] Replace inflated score with flat, honest scoring algorithm
+- [ ] Add clear disclaimer: "This is a keyword-match estimate, not a real ATS system"
+- [ ] Score breakdown: keyword match %, skills coverage %, format signals
+- [ ] Color-coded labels: Low / Moderate / Good / Strong (no "Excellent" for anything under 85)
+- [ ] Add "What this score means" explainer tooltip on the score ring
+
+## Skill Benchmarking (Comparable Jobs & Professionals)
+- [ ] Scrape 3–5 similar job postings from the same title/company type
+- [ ] Extract top skills required across those comparable postings
+- [ ] Surface "Skills commonly required for this role" panel
+- [ ] Show which of those skills are present vs. missing in user's resume
+- [ ] Add "Based on X similar job postings" attribution
+
+## Project Brainstorming
+- [ ] AI generates 5–8 project ideas to close skill gaps
+- [ ] Each project: title, description, skills gained, estimated time, work vs. side project tag
+- [ ] Separate "At Work" and "Side Project / Personal" sections
+- [ ] Copy project idea to clipboard button
+- [ ] Add as new tab in Results page
+
+## Tests
+- [ ] Vitest: anonymous session flow
+- [ ] Vitest: honest ATS scoring
+- [ ] Vitest: skill benchmarking procedure
+- [ ] Vitest: project brainstorming procedure

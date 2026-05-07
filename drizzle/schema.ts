@@ -27,8 +27,8 @@ export type InsertUser = typeof users.$inferInsert;
 // ─── Resume Analyses ───────────────────────────────────────────────────────
 export const analyses = mysqlTable("analyses", {
   id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  sessionId: varchar("sessionId", { length: 128 }).notNull(),
+  // Anonymous session token (stored in browser localStorage)
+  sessionToken: varchar("sessionToken", { length: 128 }).notNull(),
 
   // Inputs
   linkedinUrl: text("linkedinUrl"),
@@ -40,14 +40,24 @@ export const analyses = mysqlTable("analyses", {
   resumeFileName: text("resumeFileName"),
   resumeText: text("resumeText"),
 
-  // Analysis results
-  atsScore: float("atsScore"),
-  atsBreakdown: json("atsBreakdown"),       // { keywords: number, format: number, skills: number }
-  missingKeywords: json("missingKeywords"),  // string[]
-  matchedKeywords: json("matchedKeywords"),  // string[]
-  skillGaps: json("skillGaps"),             // { skill: string, importance: 'high'|'medium'|'low' }[]
+  // Honest ATS scoring
+  atsScore: float("atsScore"),              // 0–100 keyword-match estimate
+  atsBreakdown: json("atsBreakdown"),       // { keywordMatch, skillsCoverage, formatSignals }
+  atsDisclaimer: text("atsDisclaimer"),     // Honest explanation of what the score means
+  missingKeywords: json("missingKeywords"), // string[]
+  matchedKeywords: json("matchedKeywords"), // string[]
+  skillGaps: json("skillGaps"),            // { skill, importance, placement }[]
+
+  // Skill benchmarking from comparable jobs
+  benchmarkSkills: json("benchmarkSkills"), // { skill, frequency, present }[]
+  benchmarkSource: text("benchmarkSource"), // "Based on X similar job postings for [title]"
+
+  // Summary rewriter
   rewrittenSummary: text("rewrittenSummary"),
   originalSummary: text("originalSummary"),
+
+  // Project brainstorming
+  projectIdeas: json("projectIdeas"), // ProjectIdea[]
 
   status: mysqlEnum("status", ["pending", "processing", "completed", "failed"])
     .default("pending")
@@ -64,7 +74,7 @@ export type InsertAnalysis = typeof analyses.$inferInsert;
 export const suggestions = mysqlTable("suggestions", {
   id: int("id").autoincrement().primaryKey(),
   analysisId: int("analysisId").notNull(),
-  section: varchar("section", { length: 128 }).notNull(), // e.g. "experience", "skills", "summary"
+  section: varchar("section", { length: 128 }).notNull(),
   originalText: text("originalText").notNull(),
   suggestedText: text("suggestedText").notNull(),
   reason: text("reason"),

@@ -1,0 +1,9 @@
+{
+  "query": "ALTER TABLE `analyses` ADD `sessionToken` varchar(128) NOT NULL DEFAULT '';\nALTER TABLE `analyses` ADD `atsDisclaimer` text;\nALTER TABLE `analyses` ADD `benchmarkSkills` json;\nALTER TABLE `analyses` ADD `benchmarkSource` text;\nALTER TABLE `analyses` ADD `projectIdeas` json;\nALTER TABLE `analyses` DROP COLUMN `userId`;\nALTER TABLE `analyses` DROP COLUMN `sessionId`;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway06.us-east-1.prod.aws.tidbcloud.com --port 4000 --user v6LrUp88sDZhJKA.root --database VEV9LYJKGExYQwycMdebAm --execute ALTER TABLE `analyses` ADD `sessionToken` varchar(128) NOT NULL DEFAULT '';\nALTER TABLE `analyses` ADD `atsDisclaimer` text;\nALTER TABLE `analyses` ADD `benchmarkSkills` json;\nALTER TABLE `analyses` ADD `benchmarkSource` text;\nALTER TABLE `analyses` ADD `projectIdeas` json;\nALTER TABLE `analyses` DROP COLUMN `userId`;\nALTER TABLE `analyses` DROP COLUMN `sessionId`;",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1237
+}

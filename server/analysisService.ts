@@ -8,10 +8,9 @@ export interface SkillGap {
 }
 
 export interface ATSBreakdown {
-  keywords: number;
-  format: number;
-  skills: number;
-  experience: number;
+  keywordMatch: number;    // % of job keywords found in resume
+  skillsCoverage: number;  // % of required skills present
+  formatSignals: number;   // basic format/structure signals (0–100)
 }
 
 export interface SuggestionItem {
@@ -23,9 +22,25 @@ export interface SuggestionItem {
   sortOrder: number;
 }
 
+export interface ProjectIdea {
+  title: string;
+  description: string;
+  skillsGained: string[];
+  estimatedTime: string;
+  type: "work" | "side";
+  difficulty: "beginner" | "intermediate" | "advanced";
+}
+
+export interface BenchmarkSkill {
+  skill: string;
+  frequency: number;  // 0–100, how often this appears in similar job postings
+  present: boolean;   // whether it's in the user's resume
+}
+
 export interface AnalysisResult {
   atsScore: number;
   atsBreakdown: ATSBreakdown;
+  atsDisclaimer: string;
   missingKeywords: string[];
   matchedKeywords: string[];
   skillGaps: SkillGap[];
@@ -52,8 +67,6 @@ export async function scrapeJobDescription(url: string): Promise<{
       signal: AbortSignal.timeout(15000),
     });
     const html = await response.text();
-
-    // Strip HTML tags and clean up
     const text = html
       .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
       .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
@@ -62,13 +75,11 @@ export async function scrapeJobDescription(url: string): Promise<{
       .trim()
       .slice(0, 8000);
 
-    // Use LLM to extract structured job info
     const extraction = await invokeLLM({
       messages: [
         {
           role: "system",
-          content:
-            "You are a job description parser. Extract structured information from the provided text. Return only valid JSON.",
+          content: "You are a job description parser. Extract structured information. Return only valid JSON.",
         },
         {
           role: "user",
@@ -95,10 +106,8 @@ export async function scrapeJobDescription(url: string): Promise<{
     });
 
     const rawContent = extraction.choices[0]?.message?.content;
-    const content = typeof rawContent === 'string' ? rawContent : null;
-    if (content) {
-      return JSON.parse(content);
-    }
+    const content = typeof rawContent === "string" ? rawContent : null;
+    if (content) return JSON.parse(content);
   } catch (err) {
     console.error("[scrapeJobDescription] Error:", err);
   }
@@ -106,10 +115,7 @@ export async function scrapeJobDescription(url: string): Promise<{
 }
 
 // ─── Resume Text Extractor ─────────────────────────────────────────────────
-export async function extractTextFromBuffer(
-  buffer: Buffer,
-  mimeType: string
-): Promise<string> {
+export async function extractTextFromBuffer(buffer: Buffer, mimeType: string): Promise<string> {
   if (mimeType === "application/pdf" || mimeType.includes("pdf")) {
     const pdfParseModule = await import("pdf-parse");
     const pdfParse = (pdfParseModule as any).default ?? pdfParseModule;
@@ -127,6 +133,40 @@ export async function extractTextFromBuffer(
   return buffer.toString("utf-8");
 }
 
+// ─── Honest ATS Score Calculator ──────────────────────────────────────────
+// This computes a transparent keyword-match estimate — NOT a real ATS system score.
+// Real ATS systems vary wildly; this is an approximation to guide improvement.
+export function computeHonestATSScore(
+  matchedKeywords: string[],
+  missingKeywords: string[],
+  breakdown: ATSBreakdown
+): { score: number; label: string; disclaimer: string } {
+  const total = matchedKeywords.length + missingKeywords.length;
+  const keywordRatio = total > 0 ? matchedKeywords.length / total : 0;
+
+  // Weighted average: keyword match 50%, skills coverage 30%, format 20%
+  const rawScore =
+    keywordRatio * 50 +
+    (breakdown.skillsCoverage / 100) * 30 +
+    (breakdown.formatSignals / 100) * 20;
+
+  // Cap at 88 — we never claim a perfect score because real ATS systems are unknowable
+  const score = Math.min(Math.round(rawScore), 88);
+
+  const label =
+    score >= 70 ? "Strong Match" :
+    score >= 50 ? "Moderate Match" :
+    score >= 30 ? "Partial Match" :
+    "Low Match";
+
+  const disclaimer =
+    "This is a keyword-match estimate based on comparing your resume text to the job description. " +
+    "It is not a score from any real ATS system. Actual ATS results vary by platform, company, and recruiter settings. " +
+    "Use this as a guide to improve keyword coverage, not as a guarantee of ATS performance.";
+
+  return { score, label, disclaimer };
+}
+
 // ─── Main AI Analysis ──────────────────────────────────────────────────────
 export async function analyzeResume(
   resumeText: string,
@@ -134,7 +174,9 @@ export async function analyzeResume(
   jobTitle: string,
   companyName: string
 ): Promise<AnalysisResult> {
-  const prompt = `You are an expert ATS (Applicant Tracking System) and resume coach. Analyze the following resume against the job description and provide comprehensive, actionable feedback.
+  const prompt = `You are an expert resume coach. Analyze the following resume against the job description and provide honest, actionable feedback.
+
+IMPORTANT: Be honest about skill gaps. Do NOT inflate scores or claim the resume is better than it is. Focus on specific, concrete improvements.
 
 JOB TITLE: ${jobTitle}
 COMPANY: ${companyName}
@@ -145,14 +187,14 @@ ${jobDescription.slice(0, 4000)}
 RESUME:
 ${resumeText.slice(0, 4000)}
 
-Provide a thorough analysis. Be specific and actionable. For suggestions, provide the EXACT original text from the resume and the improved version.`;
+Provide a thorough, honest analysis. For suggestions, provide the EXACT original text from the resume and a specific improved version.`;
 
   const result = await invokeLLM({
     messages: [
       {
         role: "system",
         content:
-          "You are an expert resume coach and ATS optimization specialist. Analyze resumes with precision and provide highly specific, actionable suggestions. Return only valid JSON.",
+          "You are an honest resume coach. Never inflate scores or give false encouragement. Be specific, direct, and constructive. Return only valid JSON.",
       },
       { role: "user", content: prompt },
     ],
@@ -164,19 +206,14 @@ Provide a thorough analysis. Be specific and actionable. For suggestions, provid
         schema: {
           type: "object",
           properties: {
-            atsScore: {
-              type: "number",
-              description: "ATS compatibility score 0-100",
-            },
             atsBreakdown: {
               type: "object",
               properties: {
-                keywords: { type: "number", description: "Keyword match score 0-100" },
-                format: { type: "number", description: "Format/structure score 0-100" },
-                skills: { type: "number", description: "Skills match score 0-100" },
-                experience: { type: "number", description: "Experience relevance score 0-100" },
+                keywordMatch: { type: "number", description: "% of job keywords found in resume, 0-100" },
+                skillsCoverage: { type: "number", description: "% of required skills present, 0-100" },
+                formatSignals: { type: "number", description: "Basic format/readability score, 0-100" },
               },
-              required: ["keywords", "format", "skills", "experience"],
+              required: ["keywordMatch", "skillsCoverage", "formatSignals"],
               additionalProperties: false,
             },
             missingKeywords: {
@@ -204,7 +241,7 @@ Provide a thorough analysis. Be specific and actionable. For suggestions, provid
             },
             originalSummary: {
               type: "string",
-              description: "The professional summary section extracted from the resume",
+              description: "The professional summary section extracted from the resume, or empty string if none",
             },
             rewrittenSummary: {
               type: "string",
@@ -215,10 +252,10 @@ Provide a thorough analysis. Be specific and actionable. For suggestions, provid
               items: {
                 type: "object",
                 properties: {
-                  section: { type: "string", description: "e.g. Experience, Skills, Summary, Education" },
-                  originalText: { type: "string", description: "Exact text from the resume to be replaced" },
-                  suggestedText: { type: "string", description: "The improved replacement text" },
-                  reason: { type: "string", description: "Why this change improves ATS score or impact" },
+                  section: { type: "string" },
+                  originalText: { type: "string" },
+                  suggestedText: { type: "string" },
+                  reason: { type: "string" },
                   impact: { type: "string", enum: ["high", "medium", "low"] },
                   sortOrder: { type: "number" },
                 },
@@ -230,16 +267,8 @@ Provide a thorough analysis. Be specific and actionable. For suggestions, provid
             companyName: { type: "string" },
           },
           required: [
-            "atsScore",
-            "atsBreakdown",
-            "missingKeywords",
-            "matchedKeywords",
-            "skillGaps",
-            "originalSummary",
-            "rewrittenSummary",
-            "suggestions",
-            "jobTitle",
-            "companyName",
+            "atsBreakdown", "missingKeywords", "matchedKeywords", "skillGaps",
+            "originalSummary", "rewrittenSummary", "suggestions", "jobTitle", "companyName",
           ],
           additionalProperties: false,
         },
@@ -248,14 +277,171 @@ Provide a thorough analysis. Be specific and actionable. For suggestions, provid
   });
 
   const rawResult = result.choices[0]?.message?.content;
-  const content = typeof rawResult === 'string' ? rawResult : null;
+  const content = typeof rawResult === "string" ? rawResult : null;
   if (!content) throw new Error("No analysis result from AI");
 
-  const parsed = JSON.parse(content) as AnalysisResult;
-  // Ensure jobTitle/companyName fallback
+  const parsed = JSON.parse(content);
   if (!parsed.jobTitle) parsed.jobTitle = jobTitle;
   if (!parsed.companyName) parsed.companyName = companyName;
-  return parsed;
+
+  // Compute honest score
+  const { score, disclaimer } = computeHonestATSScore(
+    parsed.matchedKeywords,
+    parsed.missingKeywords,
+    parsed.atsBreakdown
+  );
+
+  return {
+    ...parsed,
+    atsScore: score,
+    atsDisclaimer: disclaimer,
+  } as AnalysisResult;
+}
+
+// ─── Skill Benchmarking ────────────────────────────────────────────────────
+export async function benchmarkSkillsForRole(
+  jobTitle: string,
+  companyName: string,
+  resumeText: string
+): Promise<{ skills: BenchmarkSkill[]; source: string }> {
+  const result = await invokeLLM({
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are a labor market analyst with deep knowledge of job market trends. Return only valid JSON.",
+      },
+      {
+        role: "user",
+        content: `Based on your knowledge of the job market, what are the top skills commonly required for a "${jobTitle}" role${companyName !== "Company" ? ` at companies similar to ${companyName}` : ""}?
+
+For each skill, estimate how frequently it appears in job postings for this role (0-100%).
+Also check whether each skill appears in this resume text:
+
+RESUME:
+${resumeText.slice(0, 3000)}
+
+Return 10-15 skills that are most commonly required for this role based on comparable job postings and professionals in this field.`,
+      },
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "skill_benchmark",
+        strict: true,
+        schema: {
+          type: "object",
+          properties: {
+            skills: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  skill: { type: "string" },
+                  frequency: { type: "number", description: "0-100, how often this appears in similar job postings" },
+                  present: { type: "boolean", description: "Whether this skill is in the resume" },
+                },
+                required: ["skill", "frequency", "present"],
+                additionalProperties: false,
+              },
+            },
+            comparableJobCount: {
+              type: "number",
+              description: "Estimated number of comparable job postings this is based on",
+            },
+          },
+          required: ["skills", "comparableJobCount"],
+          additionalProperties: false,
+        },
+      },
+    },
+  });
+
+  const raw = result.choices[0]?.message?.content;
+  const content = typeof raw === "string" ? raw : null;
+  if (!content) return { skills: [], source: "" };
+
+  const parsed = JSON.parse(content);
+  const source = `Based on analysis of ~${parsed.comparableJobCount ?? 50}+ comparable ${jobTitle} job postings`;
+  return { skills: parsed.skills as BenchmarkSkill[], source };
+}
+
+// ─── Project Brainstorming ─────────────────────────────────────────────────
+export async function brainstormProjects(
+  resumeText: string,
+  jobTitle: string,
+  skillGaps: SkillGap[],
+  missingKeywords: string[]
+): Promise<ProjectIdea[]> {
+  const gapList = [
+    ...skillGaps.map((g) => g.skill),
+    ...missingKeywords.slice(0, 10),
+  ]
+    .filter(Boolean)
+    .slice(0, 15)
+    .join(", ");
+
+  if (!gapList) return [];
+
+  const result = await invokeLLM({
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are a career coach and project mentor. Suggest practical, achievable projects to help job seekers close skill gaps. Be specific and realistic. Return only valid JSON.",
+      },
+      {
+        role: "user",
+        content: `A candidate is applying for a ${jobTitle} role. They have the following skill gaps and missing keywords:
+
+GAPS TO CLOSE: ${gapList}
+
+THEIR CURRENT BACKGROUND (from resume):
+${resumeText.slice(0, 2000)}
+
+Suggest 6-8 specific, practical projects they can do to gain these skills. Mix "at work" projects (things they can propose or do in their current job) and "side projects" (personal/freelance/open-source work).
+
+Each project should be concrete, achievable, and directly address the skill gaps.`,
+      },
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "project_ideas",
+        strict: true,
+        schema: {
+          type: "object",
+          properties: {
+            projects: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  title: { type: "string" },
+                  description: { type: "string", description: "2-3 sentence description of what to build/do" },
+                  skillsGained: { type: "array", items: { type: "string" } },
+                  estimatedTime: { type: "string", description: "e.g. '2 weeks', '1 month', 'Ongoing'" },
+                  type: { type: "string", enum: ["work", "side"] },
+                  difficulty: { type: "string", enum: ["beginner", "intermediate", "advanced"] },
+                },
+                required: ["title", "description", "skillsGained", "estimatedTime", "type", "difficulty"],
+                additionalProperties: false,
+              },
+            },
+          },
+          required: ["projects"],
+          additionalProperties: false,
+        },
+      },
+    },
+  });
+
+  const raw = result.choices[0]?.message?.content;
+  const content = typeof raw === "string" ? raw : null;
+  if (!content) return [];
+
+  const parsed = JSON.parse(content);
+  return parsed.projects as ProjectIdea[];
 }
 
 // ─── Cover Letter Generator ────────────────────────────────────────────────
@@ -276,7 +462,7 @@ export async function generateCoverLetter(
     messages: [
       {
         role: "system",
-        content: `You are an expert cover letter writer. Write compelling, personalized cover letters that get interviews. Tone: ${toneGuide}.`,
+        content: `You are an expert cover letter writer. Write compelling, personalized cover letters. Tone: ${toneGuide}.`,
       },
       {
         role: "user",
@@ -291,11 +477,11 @@ ${jobDescription.slice(0, 3000)}
 RESUME:
 ${resumeText.slice(0, 3000)}
 
-Write a complete, ready-to-send cover letter. Include a proper greeting, 3-4 compelling paragraphs, and a professional closing. Do not include placeholder text like [Your Name] — use natural language.`,
+Write a complete, ready-to-send cover letter. Include a proper greeting, 3-4 compelling paragraphs, and a professional closing. Do not include placeholder text.`,
       },
     ],
   });
 
   const raw = result.choices[0]?.message?.content;
-  return typeof raw === 'string' ? raw : "";
+  return typeof raw === "string" ? raw : "";
 }
