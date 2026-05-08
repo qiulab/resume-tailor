@@ -12,7 +12,7 @@ LevelUp is an AI-powered resume evaluation tool that goes beyond keyword matchin
 
 ## Demo
 
-https://files.manuscdn.com/user_upload_by_module/session_file/310519663637683954/obhqwZCtYmGJanSN.mp4
+https://files.manuscdn.com/user_upload_by_module/session_file/310519663637683954/wHYVjXaymXPalnlO.mp4
 
 ---
 
