@@ -53,6 +53,8 @@ export interface AnalysisResult {
   atsScore: number;
   atsBreakdown: ATSBreakdown;
   atsDisclaimer: string;
+  atsStrengths: string[];
+  atsWeaknesses: string[];
   missingKeywords: string[];
   matchedKeywords: string[];
   skillGaps: SkillGap[];
@@ -142,7 +144,100 @@ export async function extractTextFromBuffer(buffer: Buffer, mimeType: string): P
   return buffer.toString("utf-8");
 }
 
-// ─── Honest ATS Score Calculator ──────────────────────────────────────────
+// ─── LLM-Powered Semantic Score ───────────────────────────────────────────
+// Uses the LLM to evaluate fit beyond simple keyword matching — considers
+// synonyms, implied skills, experience relevance, and context.
+export async function computeSemanticATSScore(
+  resumeText: string,
+  jobDescription: string,
+  matchedKeywords: string[],
+  missingKeywords: string[],
+  breakdown: ATSBreakdown
+): Promise<{ score: number; label: string; disclaimer: string; strengths: string[]; weaknesses: string[] }> {
+  // Ask the LLM to evaluate semantic fit, not just keyword presence
+  const result = await invokeLLM({
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are an expert recruiter and resume evaluator. Score resume-to-job fit using semantic understanding — consider synonyms, implied skills, transferable experience, and context. Do not just count keywords. Be honest and specific. Return only valid JSON.",
+      },
+      {
+        role: "user",
+        content: `Evaluate how well this resume matches the job description.
+
+JOB DESCRIPTION:
+${jobDescription.slice(0, 3000)}
+
+RESUME:
+${resumeText.slice(0, 3000)}
+
+Already identified:
+- Matched keywords: ${matchedKeywords.slice(0, 15).join(", ")}
+- Missing keywords: ${missingKeywords.slice(0, 15).join(", ")}
+
+Provide:
+1. A semantic fit score (0-100) that goes beyond keyword matching — consider whether the candidate's actual experience and skills genuinely match the role requirements, even if different words are used.
+2. 2-3 specific strengths (what makes this resume a good fit)
+3. 2-3 specific weaknesses (what's genuinely missing or misaligned)
+
+Cap the score at 88 — never give 90+ unless it's an exceptional match.`,
+      },
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "semantic_score",
+        strict: true,
+        schema: {
+          type: "object",
+          properties: {
+            score: { type: "number", description: "Semantic fit score 0-88" },
+            strengths: { type: "array", items: { type: "string" }, description: "2-3 specific strengths" },
+            weaknesses: { type: "array", items: { type: "string" }, description: "2-3 specific weaknesses" },
+          },
+          required: ["score", "strengths", "weaknesses"],
+          additionalProperties: false,
+        },
+      },
+    },
+  });
+
+  const raw = result.choices[0]?.message?.content;
+  const content = typeof raw === "string" ? raw : null;
+
+  let semanticScore = 0;
+  let strengths: string[] = [];
+  let weaknesses: string[] = [];
+
+  if (content) {
+    try {
+      const parsed = JSON.parse(content);
+      semanticScore = Math.min(Math.round(parsed.score ?? 0), 88);
+      strengths = parsed.strengths ?? [];
+      weaknesses = parsed.weaknesses ?? [];
+    } catch {
+      // Fallback to keyword-based if parsing fails
+      const total = matchedKeywords.length + missingKeywords.length;
+      const ratio = total > 0 ? matchedKeywords.length / total : 0;
+      semanticScore = Math.min(Math.round(ratio * 50 + (breakdown.skillsCoverage / 100) * 30 + (breakdown.formatSignals / 100) * 20), 88);
+    }
+  }
+
+  const label =
+    semanticScore >= 70 ? "Strong Match" :
+    semanticScore >= 50 ? "Moderate Match" :
+    semanticScore >= 30 ? "Partial Match" :
+    "Low Match";
+
+  const disclaimer =
+    "This score uses AI to evaluate semantic fit — it considers synonyms, implied skills, and experience relevance, not just keyword counts. " +
+    "It is not a score from any real ATS system. Use it as a guide, not a guarantee.";
+
+  return { score: semanticScore, label, disclaimer, strengths, weaknesses };
+}
+
+// Keep the synchronous version as a fallback for tests
 export function computeHonestATSScore(
   matchedKeywords: string[],
   missingKeywords: string[],
@@ -150,26 +245,10 @@ export function computeHonestATSScore(
 ): { score: number; label: string; disclaimer: string } {
   const total = matchedKeywords.length + missingKeywords.length;
   const keywordRatio = total > 0 ? matchedKeywords.length / total : 0;
-
-  const rawScore =
-    keywordRatio * 50 +
-    (breakdown.skillsCoverage / 100) * 30 +
-    (breakdown.formatSignals / 100) * 20;
-
-  // Cap at 88 — never claim a perfect score
+  const rawScore = keywordRatio * 50 + (breakdown.skillsCoverage / 100) * 30 + (breakdown.formatSignals / 100) * 20;
   const score = Math.min(Math.round(rawScore), 88);
-
-  const label =
-    score >= 70 ? "Strong Match" :
-    score >= 50 ? "Moderate Match" :
-    score >= 30 ? "Partial Match" :
-    "Low Match";
-
-  const disclaimer =
-    "This is a keyword-match estimate based on comparing your resume text to the job description. " +
-    "It is not a score from any real ATS system. Actual ATS results vary by platform, company, and recruiter settings. " +
-    "Use this as a guide to improve keyword coverage, not as a guarantee of ATS performance.";
-
+  const label = score >= 70 ? "Strong Match" : score >= 50 ? "Moderate Match" : score >= 30 ? "Partial Match" : "Low Match";
+  const disclaimer = "Keyword-match estimate. Not a real ATS score.";
   return { score, label, disclaimer };
 }
 
@@ -293,13 +372,28 @@ ${linkedinContext}${notesContext}`;
   if (!parsed.jobTitle) parsed.jobTitle = jobTitle;
   if (!parsed.companyName) parsed.companyName = companyName;
 
-  const { score, disclaimer } = computeHonestATSScore(
+  // Filter out any suggestions targeting summary/objective sections
+  const SUMMARY_SECTIONS = ["summary", "objective", "professional summary", "career objective", "profile"];
+  parsed.suggestions = (parsed.suggestions ?? []).filter(
+    (s: SuggestionItem) => !SUMMARY_SECTIONS.some((sec) => s.section.toLowerCase().includes(sec))
+  );
+
+  // Use LLM semantic scoring instead of keyword counting
+  const { score, label, disclaimer, strengths, weaknesses } = await computeSemanticATSScore(
+    resumeText,
+    jobDescription,
     parsed.matchedKeywords,
     parsed.missingKeywords,
     parsed.atsBreakdown
   );
 
-  return { ...parsed, atsScore: score, atsDisclaimer: disclaimer } as AnalysisResult;
+  return {
+    ...parsed,
+    atsScore: score,
+    atsDisclaimer: disclaimer,
+    atsStrengths: strengths,
+    atsWeaknesses: weaknesses,
+  } as AnalysisResult;
 }
 
 // ─── Skill Benchmarking ────────────────────────────────────────────────────

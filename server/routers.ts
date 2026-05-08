@@ -130,6 +130,8 @@ export const appRouter = router({
               atsScore: analysis.atsScore,
               atsBreakdown: analysis.atsBreakdown,
               atsDisclaimer: analysis.atsDisclaimer,
+              atsStrengths: analysis.atsStrengths,
+              atsWeaknesses: analysis.atsWeaknesses,
               missingKeywords: analysis.missingKeywords,
               matchedKeywords: analysis.matchedKeywords,
               skillGaps: analysis.skillGaps,

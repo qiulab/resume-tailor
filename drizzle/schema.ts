@@ -40,10 +40,12 @@ export const analyses = mysqlTable("analyses", {
   resumeFileName: text("resumeFileName"),
   resumeText: text("resumeText"),
 
-  // Honest ATS scoring
-  atsScore: float("atsScore"),              // 0–100 keyword-match estimate
-  atsBreakdown: json("atsBreakdown"),       // { keywordMatch, skillsCoverage, formatSignals }
-  atsDisclaimer: text("atsDisclaimer"),     // Honest explanation of what the score means
+  // Semantic ATS scoring
+  atsScore: float("atsScore"),
+  atsBreakdown: json("atsBreakdown"),
+  atsDisclaimer: text("atsDisclaimer"),
+  atsStrengths: json("atsStrengths"),   // string[] - what's strong
+  atsWeaknesses: json("atsWeaknesses"), // string[] - what's weak
   missingKeywords: json("missingKeywords"), // string[]
   matchedKeywords: json("matchedKeywords"), // string[]
   skillGaps: json("skillGaps"),            // { skill, importance, placement }[]

@@ -133,12 +133,21 @@
 - [x] Vitest: job recommendations procedure
 
 ## App Flow Redesign
-- [ ] Collapse landing page into a single inline form (no multi-step wizard)
-- [ ] Form fields: LinkedIn URL (optional), job URL (required), resume upload (required), notes/concerns (optional textarea)
-- [ ] Remove the separate Analyze page — form lives on the home page
-- [ ] Redesign Results as a clean evaluation: score, what's missing, what's good, improvements list
-- [ ] Add prominent "Generate improved resume" button on Results page
-- [ ] Build GeneratedResume page: full rewritten resume document, copy + download options
-- [ ] Add generateImprovedResume backend procedure
-- [ ] Add generatedResume column to analyses DB schema
-- [ ] Vitest: generateImprovedResume procedure
+- [x] Collapse landing page into a single inline form (no multi-step wizard)
+- [x] Form fields: LinkedIn URL (optional), job URL (required), resume upload (required), notes/concerns (optional textarea)
+- [x] Remove the separate Analyze page — form lives on the home page
+- [x] Redesign Results as a clean evaluation: score, what's missing, what's good, improvements list
+- [x] Add prominent "Generate improved resume" button on Results page
+- [x] Build GeneratedResume page: full rewritten resume document, copy + download options
+- [x] Add generateImprovedResume backend procedure
+- [x] Add generatedResume column to analyses DB schema
+- [x] Vitest: generateImprovedResume procedure
+
+## Evaluation Improvements
+- [x] Replace keyword-count ATS score with LLM semantic analysis (context-aware matching, not just exact words)
+- [x] Add qualitative evaluation: what's strong, what's weak, overall fit assessment
+- [x] Filter out any suggestions targeting summary/objective sections
+- [x] Reorganize skills tab: green (present) first, red (missing) second, sorted by frequency
+- [x] Remove Summary, Cover Letter, and Jobs tabs from Results
+- [x] Move "Generate improved resume" button to the bottom of the evaluation page as the final CTA
+- [x] Keep tabs: Evaluation, Suggestions, Skills, Projects
