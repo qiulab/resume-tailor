@@ -1,174 +1,314 @@
-import { Button } from "@/components/ui/button";
+import { useState, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
+import { trpc } from "@/lib/trpc";
+import { useSession } from "@/hooks/useSession";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
 import {
   FileText,
-  Link2,
-  Linkedin,
-  Target,
-  PenTool,
-  BarChart3,
-  Code2,
-  Briefcase,
-  Sparkles,
-  ArrowRight,
+  Upload,
+  X,
   CheckCircle,
+  Loader2,
+  Sparkles,
+  History,
 } from "lucide-react";
 
-const WHAT_IT_DOES = [
-  {
-    icon: Target,
-    title: "Keyword match score",
-    desc: "Compares your resume against the job description and shows which keywords are present or missing. The score is an estimate — not a real ATS output.",
-  },
-  {
-    icon: PenTool,
-    title: "Inline edit suggestions",
-    desc: "AI rewrites specific lines in your resume to better match the job. You review each one and accept or reject it.",
-  },
-  {
-    icon: BarChart3,
-    title: "Skill benchmark",
-    desc: "Shows which skills are commonly required for the role based on similar job postings, and which ones you're missing.",
-  },
-  {
-    icon: Sparkles,
-    title: "Summary rewrite",
-    desc: "Rewrites your professional summary to be more relevant to the specific job you're applying to.",
-  },
-  {
-    icon: FileText,
-    title: "Cover letter",
-    desc: "Generates a cover letter based on your resume and the job description. You can regenerate it in three different tones.",
-  },
-  {
-    icon: Code2,
-    title: "Project ideas",
-    desc: "Suggests specific projects — at work or as side projects — to help you build the skills you're missing for the role.",
-  },
-  {
-    icon: Briefcase,
-    title: "Jobs to consider",
-    desc: "Recommends similar roles you're qualified for, with direct search links to LinkedIn Jobs and Indeed.",
-  },
-  {
-    icon: Linkedin,
-    title: "LinkedIn profile parsing",
-    desc: "If you add your LinkedIn URL, it scrapes your public profile and uses your full work history for a more accurate analysis.",
-  },
-];
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve((reader.result as string).split(",")[1] ?? "");
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 export default function Home() {
   const [, navigate] = useLocation();
+  const sessionToken = useSession();
+  const [linkedinUrl, setLinkedinUrl] = useState("");
+  const [jobUrl, setJobUrl] = useState("");
+  const [notes, setNotes] = useState("");
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const startAnalysis = trpc.resume.startAnalysis.useMutation();
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (
+      file &&
+      (file.type.includes("pdf") ||
+        file.type.includes("word") ||
+        file.name.endsWith(".docx"))
+    ) {
+      setResumeFile(file);
+    } else {
+      toast.error("Please upload a PDF or DOCX file");
+    }
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!jobUrl.trim()) {
+      toast.error("Job posting URL is required");
+      return;
+    }
+    try { new URL(jobUrl); } catch {
+      toast.error("Please enter a valid job posting URL");
+      return;
+    }
+    if (!resumeFile) {
+      toast.error("Please upload your resume");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const base64 = await fileToBase64(resumeFile);
+      // Append notes to linkedinUrl field as a workaround — pass notes via a combined field
+      const { analysisId } = await startAnalysis.mutateAsync({
+        sessionToken,
+        linkedinUrl: linkedinUrl || undefined,
+        jobUrl,
+        resumeBase64: base64,
+        resumeFileName: resumeFile.name,
+        resumeMimeType: resumeFile.type || "application/pdf",
+        notes: notes || undefined,
+      } as any);
+      navigate(`/results/${analysisId}`);
+    } catch (err: any) {
+      toast.error(err?.message ?? "Something went wrong. Please try again.");
+      setIsSubmitting(false);
+    }
+  };
+
+  if (isSubmitting) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center max-w-sm mx-auto px-6">
+          <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mx-auto mb-5">
+            <Sparkles className="w-6 h-6 text-primary animate-pulse" />
+          </div>
+          <h2 className="text-lg font-serif font-semibold text-foreground mb-2">
+            Evaluating your resume
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Reading the job description, analyzing your resume, and generating
+            feedback. This takes about 60–90 seconds.
+          </p>
+          <div className="mt-6 flex gap-1.5 justify-center">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce"
+                style={{ animationDelay: `${i * 0.15}s` }}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
-      {/* ─── Nav ─────────────────────────────────────────────────────── */}
+      {/* Nav */}
       <nav className="border-b border-border/60">
         <div className="container flex items-center justify-between h-14">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center">
               <FileText className="w-3.5 h-3.5 text-primary-foreground" />
             </div>
-            <span className="font-serif font-semibold text-foreground">ResumeTailor</span>
+            <span className="font-serif font-semibold text-foreground">
+              ResumeTailor
+            </span>
           </div>
-          <Button variant="ghost" size="sm" onClick={() => navigate("/history")}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-2 text-muted-foreground"
+            onClick={() => navigate("/history")}
+          >
+            <History className="w-3.5 h-3.5" />
             History
           </Button>
         </div>
       </nav>
 
-      <div className="container max-w-2xl mx-auto py-16 px-4">
-        {/* ─── Hero ──────────────────────────────────────────────────── */}
-        <div className="mb-14">
-          <h1 className="text-4xl font-serif font-semibold text-foreground mb-4 leading-tight">
-            Tailor your resume to a job posting
+      {/* Main form */}
+      <div className="container max-w-xl mx-auto py-14 px-4">
+        <div className="mb-10">
+          <h1 className="text-3xl font-serif font-semibold text-foreground mb-3">
+            Resume evaluation
           </h1>
-          <p className="text-muted-foreground text-lg leading-relaxed mb-8">
-            Paste a job URL, upload your resume, and get a breakdown of what's
-            missing — keyword gaps, suggested edits, a rewritten summary, a cover
-            letter, and job recommendations. No account needed.
-          </p>
-
-          <div className="flex items-center gap-3 mb-6">
-            <Button
-              size="lg"
-              className="gap-2"
-              onClick={() => navigate("/analyze")}
-            >
-              Get started
-              <ArrowRight className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="lg"
-              onClick={() => navigate("/history")}
-            >
-              View history
-            </Button>
-          </div>
-
-          {/* How it works — 3 steps, plain */}
-          <div className="flex flex-col sm:flex-row gap-4 text-sm text-muted-foreground">
-            {[
-              { icon: Linkedin, text: "Add your LinkedIn URL (optional)" },
-              { icon: Link2, text: "Paste the job posting URL" },
-              { icon: FileText, text: "Upload your resume (PDF or DOCX)" },
-            ].map((step, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <step.icon className="w-4 h-4 shrink-0 text-muted-foreground/60" />
-                <span>{step.text}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* ─── Divider ───────────────────────────────────────────────── */}
-        <div className="border-t border-border mb-14" />
-
-        {/* ─── What it does ──────────────────────────────────────────── */}
-        <div>
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-8">
-            What it does
-          </h2>
-
-          <div className="space-y-6">
-            {WHAT_IT_DOES.map((item) => (
-              <div key={item.title} className="flex gap-4">
-                <div className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center shrink-0 mt-0.5">
-                  <item.icon className="w-4 h-4 text-muted-foreground" />
-                </div>
-                <div>
-                  <p className="font-medium text-foreground text-sm mb-1">
-                    {item.title}
-                  </p>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    {item.desc}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* ─── Divider ───────────────────────────────────────────────── */}
-        <div className="border-t border-border my-14" />
-
-        {/* ─── Honest note ───────────────────────────────────────────── */}
-        <div className="bg-secondary/50 rounded-xl p-5 text-sm text-muted-foreground leading-relaxed">
-          <p className="font-medium text-foreground mb-1">A note on the score</p>
-          <p>
-            The ATS compatibility score is a keyword-match estimate — it counts
-            how many job description keywords appear in your resume. It is not a
-            real ATS system score. Actual ATS results vary by company and
-            platform. Use the score as a rough guide, not a guarantee.
+          <p className="text-muted-foreground">
+            Upload your resume and a job posting. We'll tell you what's missing,
+            what's strong, and how to improve it — then you can generate a
+            tailored version.
           </p>
         </div>
 
-        {/* ─── Footer ────────────────────────────────────────────────── */}
-        <div className="mt-14 pt-8 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
-          <span>ResumeTailor · No account required</span>
-          <span>Results in ~60–90 seconds</span>
-        </div>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Job URL */}
+          <div>
+            <Label
+              htmlFor="jobUrl"
+              className="text-sm font-medium text-foreground mb-1.5 block"
+            >
+              Job posting URL
+            </Label>
+            <Input
+              id="jobUrl"
+              type="url"
+              placeholder="https://jobs.company.com/..."
+              value={jobUrl}
+              onChange={(e) => setJobUrl(e.target.value)}
+              className="h-10"
+              required
+            />
+          </div>
+
+          {/* LinkedIn URL */}
+          <div>
+            <Label
+              htmlFor="linkedin"
+              className="text-sm font-medium text-foreground mb-1.5 block"
+            >
+              LinkedIn profile URL{" "}
+              <span className="text-muted-foreground font-normal">
+                — optional, enables deeper analysis
+              </span>
+            </Label>
+            <Input
+              id="linkedin"
+              type="url"
+              placeholder="https://linkedin.com/in/your-profile"
+              value={linkedinUrl}
+              onChange={(e) => setLinkedinUrl(e.target.value)}
+              className="h-10"
+            />
+          </div>
+
+          {/* Resume upload */}
+          <div>
+            <Label className="text-sm font-medium text-foreground mb-1.5 block">
+              Resume
+            </Label>
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${
+                isDragging
+                  ? "border-primary bg-primary/5"
+                  : resumeFile
+                  ? "border-emerald-300 bg-emerald-50/50"
+                  : "border-border hover:border-primary/40 hover:bg-secondary/40"
+              }`}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) setResumeFile(f);
+                }}
+              />
+              {resumeFile ? (
+                <div className="flex items-center justify-center gap-3">
+                  <CheckCircle className="w-5 h-5 text-emerald-500 shrink-0" />
+                  <div className="text-left">
+                    <p className="text-sm font-medium text-foreground">
+                      {resumeFile.name}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {(resumeFile.size / 1024 / 1024).toFixed(2)} MB
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setResumeFile(null);
+                    }}
+                    className="ml-auto text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2">
+                  <Upload className="w-6 h-6 text-muted-foreground/60" />
+                  <p className="text-sm text-muted-foreground">
+                    Drop your resume here or{" "}
+                    <span className="text-primary">browse</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground/60">
+                    PDF or DOCX
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Notes / concerns */}
+          <div>
+            <Label
+              htmlFor="notes"
+              className="text-sm font-medium text-foreground mb-1.5 block"
+            >
+              Notes or concerns{" "}
+              <span className="text-muted-foreground font-normal">
+                — optional
+              </span>
+            </Label>
+            <Textarea
+              id="notes"
+              placeholder="e.g. I'm switching industries, I have a gap in employment, I'm not sure how to highlight my freelance work..."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="resize-none h-24 text-sm"
+            />
+          </div>
+
+          {/* Submit */}
+          <Button
+            type="submit"
+            size="lg"
+            className="w-full gap-2"
+            disabled={!jobUrl || !resumeFile || isSubmitting}
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Evaluating...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4" />
+                Evaluate my resume
+              </>
+            )}
+          </Button>
+
+          <p className="text-xs text-center text-muted-foreground">
+            No account required · Results in ~60–90 seconds
+          </p>
+        </form>
       </div>
     </div>
   );

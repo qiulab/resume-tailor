@@ -131,3 +131,14 @@
 - [x] Include "Stretch roles" (slightly above current level) and "Lateral roles" (same level, different domain)
 - [x] Add jobRecommendations JSON column to analyses DB schema
 - [x] Vitest: job recommendations procedure
+
+## App Flow Redesign
+- [ ] Collapse landing page into a single inline form (no multi-step wizard)
+- [ ] Form fields: LinkedIn URL (optional), job URL (required), resume upload (required), notes/concerns (optional textarea)
+- [ ] Remove the separate Analyze page — form lives on the home page
+- [ ] Redesign Results as a clean evaluation: score, what's missing, what's good, improvements list
+- [ ] Add prominent "Generate improved resume" button on Results page
+- [ ] Build GeneratedResume page: full rewritten resume document, copy + download options
+- [ ] Add generateImprovedResume backend procedure
+- [ ] Add generatedResume column to analyses DB schema
+- [ ] Vitest: generateImprovedResume procedure

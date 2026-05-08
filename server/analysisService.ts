@@ -179,8 +179,13 @@ export async function analyzeResume(
   jobDescription: string,
   jobTitle: string,
   companyName: string,
-  linkedinProfile?: LinkedInProfile | null
+  linkedinProfile?: LinkedInProfile | null,
+  userNotes?: string
 ): Promise<AnalysisResult> {
+  const notesContext = userNotes
+    ? `\n\nUSER'S NOTES AND CONCERNS (address these specifically in your analysis):\n${userNotes}`
+    : "";
+
   const linkedinContext = linkedinProfile
     ? `\n\nLINKEDIN PROFILE (additional context for deeper analysis):
 Name: ${linkedinProfile.name}
@@ -205,7 +210,7 @@ ${jobDescription.slice(0, 3500)}
 
 RESUME:
 ${resumeText.slice(0, 3500)}
-${linkedinContext}`;
+${linkedinContext}${notesContext}`;
 
   const result = await invokeLLM({
     messages: [
@@ -515,6 +520,56 @@ Make the job titles realistic and specific (e.g., "Senior Product Manager - Plat
 
   const parsed = JSON.parse(content);
   return parsed.recommendations as JobRecommendation[];
+}
+
+// ─── Improved Resume Generator ───────────────────────────────────────────────
+export async function generateImprovedResume(
+  resumeText: string,
+  jobDescription: string,
+  jobTitle: string,
+  companyName: string,
+  acceptedSuggestions: Array<{ originalText: string; suggestedText: string }>,
+  rewrittenSummary: string,
+  userNotes?: string
+): Promise<string> {
+  const suggestionsContext =
+    acceptedSuggestions.length > 0
+      ? `\n\nACCEPTED EDITS TO APPLY:\n${acceptedSuggestions
+          .map((s, i) => `${i + 1}. Replace: "${s.originalText.slice(0, 100)}" → "${s.suggestedText.slice(0, 100)}"`)
+          .join("\n")}`
+      : "";
+
+  const notesContext = userNotes
+    ? `\n\nUSER NOTES: ${userNotes}`
+    : "";
+
+  const result = await invokeLLM({
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are an expert resume writer. Rewrite the provided resume to be tailored, specific, and optimized for the target role. Preserve the candidate's real experience — do not fabricate anything. Output clean, formatted resume text only.",
+      },
+      {
+        role: "user",
+        content: `Rewrite this resume for a ${jobTitle} role at ${companyName}.
+
+Original resume:
+${resumeText.slice(0, 4000)}
+
+Job description:
+${jobDescription.slice(0, 2000)}
+
+Rewritten summary to use:
+${rewrittenSummary || "(rewrite the summary to match the role)"}${suggestionsContext}${notesContext}
+
+Output the full rewritten resume as clean plain text. Keep all real experience intact. Apply the accepted edits. Make the language specific and results-oriented throughout. Do not add fake experience or skills.`,
+      },
+    ],
+  });
+
+  const raw = result.choices[0]?.message?.content;
+  return typeof raw === "string" ? raw : "";
 }
 
 // ─── Cover Letter Generator ────────────────────────────────────────────────

@@ -66,6 +66,9 @@ export const analyses = mysqlTable("analyses", {
   // Job recommendations
   jobRecommendations: json("jobRecommendations"), // JobRecommendation[]
 
+  // Generated improved resume
+  generatedResume: text("generatedResume"),
+
   status: mysqlEnum("status", ["pending", "processing", "completed", "failed"])
     .default("pending")
     .notNull(),

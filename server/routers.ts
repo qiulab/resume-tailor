@@ -25,6 +25,7 @@ import {
   benchmarkSkillsForRole,
   brainstormProjects,
   generateJobRecommendations,
+  generateImprovedResume,
 } from "./analysisService";
 import {
   scrapeLinkedInProfile,
@@ -55,6 +56,7 @@ export const appRouter = router({
           resumeBase64: z.string(),
           resumeFileName: z.string(),
           resumeMimeType: z.string(),
+          notes: z.string().optional(),
         })
       )
       .mutation(async ({ input }) => {
@@ -100,7 +102,8 @@ export const appRouter = router({
               jobDescription,
               jobTitle,
               companyName,
-              linkedinProfile
+              linkedinProfile,
+              input.notes
             );
 
             // 6. Run parallel enrichment tasks
@@ -285,6 +288,31 @@ Write a 3-4 sentence summary highlighting relevant experience, key skills, and v
         const rewrittenSummary = typeof raw === "string" ? raw : "";
         await updateAnalysis(input.analysisId, { rewrittenSummary });
         return { rewrittenSummary };
+      }),
+
+    // Generate improved resume
+    generateResume: publicProcedure
+      .input(z.object({ analysisId: z.number(), sessionToken: z.string() }))
+      .mutation(async ({ input }) => {
+        const analysis = await getAnalysisById(input.analysisId);
+        if (!analysis || analysis.sessionToken !== input.sessionToken) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+        const suggestions = await getSuggestionsByAnalysisId(input.analysisId);
+        const acceptedSuggestions = suggestions
+          .filter((s) => s.status === "accepted")
+          .map((s) => ({ originalText: s.originalText, suggestedText: s.suggestedText }));
+
+        const generatedResume = await generateImprovedResume(
+          analysis.resumeText ?? "",
+          analysis.jobDescription ?? "",
+          analysis.jobTitle ?? "Position",
+          analysis.companyName ?? "Company",
+          acceptedSuggestions,
+          analysis.rewrittenSummary ?? ""
+        );
+        await updateAnalysis(input.analysisId, { generatedResume });
+        return { generatedResume };
       }),
 
     deleteHistory: publicProcedure
