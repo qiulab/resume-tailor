@@ -136,6 +136,8 @@ export default function Home() {
   const [jobUrl, setJobUrl] = useState("");
   const [notes, setNotes] = useState("");
   const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [resumeText, setResumeText] = useState("");
+  const [resumeMode, setResumeMode] = useState<"upload" | "paste">("upload");
   const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -170,14 +172,26 @@ export default function Home() {
     }
     setIsSubmitting(true);
     try {
-      const base64 = resumeFile ? await fileToBase64(resumeFile) : "";
+      // Handle both upload and paste modes
+      let base64 = "";
+      let fileName = "";
+      let mimeType = "text/plain";
+      if (resumeMode === "upload" && resumeFile) {
+        base64 = await fileToBase64(resumeFile);
+        fileName = resumeFile.name;
+        mimeType = resumeFile.type || "application/pdf";
+      } else if (resumeMode === "paste" && resumeText.trim()) {
+        base64 = btoa(unescape(encodeURIComponent(resumeText)));
+        fileName = "resume.txt";
+        mimeType = "text/plain";
+      }
       const { analysisId } = await startAnalysis.mutateAsync({
         sessionToken,
         linkedinUrl: linkedinUrl || undefined,
         jobUrl,
         resumeBase64: base64,
-        resumeFileName: resumeFile?.name ?? "",
-        resumeMimeType: resumeFile?.type || "application/pdf",
+        resumeFileName: fileName,
+        resumeMimeType: mimeType,
         notes: notes || undefined,
       } as any);
       navigate(`/results/${analysisId}`);
@@ -187,8 +201,10 @@ export default function Home() {
     }
   };
 
+  const hasResume = resumeMode === "upload" ? !!resumeFile : resumeText.trim().length > 0;
+
   if (isSubmitting) {
-    return <LoadingScreen hasResume={!!resumeFile} hasLinkedIn={!!linkedinUrl} />;
+    return <LoadingScreen hasResume={hasResume} hasLinkedIn={!!linkedinUrl} />;
   }
 
   return (
@@ -268,12 +284,47 @@ export default function Home() {
             />
           </div>
 
-          {/* Resume upload */}
+          {/* Resume — upload or paste toggle */}
           <div>
-            <Label className="text-sm font-medium text-foreground mb-1.5 block">
-              Resume{" "}
-              <span className="text-muted-foreground font-normal">— optional</span>
-            </Label>
+            <div className="flex items-center justify-between mb-1.5">
+              <Label className="text-sm font-medium text-foreground">
+                Resume{" "}
+                <span className="text-muted-foreground font-normal">— optional</span>
+              </Label>
+              <div className="flex rounded-lg border border-border overflow-hidden text-xs">
+                <button
+                  type="button"
+                  onClick={() => setResumeMode("upload")}
+                  className={`px-3 py-1.5 font-medium transition-colors ${
+                    resumeMode === "upload"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-secondary"
+                  }`}
+                >
+                  Upload file
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setResumeMode("paste")}
+                  className={`px-3 py-1.5 font-medium transition-colors ${
+                    resumeMode === "paste"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-secondary"
+                  }`}
+                >
+                  Paste text
+                </button>
+              </div>
+            </div>
+
+            {resumeMode === "paste" ? (
+              <Textarea
+                placeholder="Paste your resume text here..."
+                value={resumeText}
+                onChange={(e) => setResumeText(e.target.value)}
+                className="resize-none h-40 text-sm font-mono"
+              />
+            ) : (
             <div
               onDragOver={(e) => {
                 e.preventDefault();
@@ -335,6 +386,7 @@ export default function Home() {
                 </div>
               )}
             </div>
+            )}
           </div>
 
           {/* Notes / concerns */}
