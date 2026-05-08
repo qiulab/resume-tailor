@@ -133,7 +133,7 @@ export default function Results() {
   const generateResume = trpc.resume.generateResume.useMutation({
     onSuccess: () => {
       utils.resume.getAnalysis.invalidate({ analysisId, sessionToken });
-      setActiveTab("generated");
+      setActiveTab("generate");
       setIsGenerating(false);
       toast.success("Improved resume generated");
     },
@@ -242,11 +242,9 @@ export default function Results() {
             </TabsTrigger>
             <TabsTrigger value="skills" className="rounded-md text-sm">Skills</TabsTrigger>
             <TabsTrigger value="projects" className="rounded-md text-sm">Projects</TabsTrigger>
-            {generatedResume && (
-              <TabsTrigger value="generated" className="rounded-md text-sm gap-1">
-                <Wand2 className="w-3 h-3" /> Resume
-              </TabsTrigger>
-            )}
+            <TabsTrigger value="generate" className="rounded-md text-sm gap-1">
+              <Wand2 className="w-3 h-3" /> Generate Resume
+            </TabsTrigger>
           </TabsList>
 
           {/* ─── Evaluation ───────────────────────────────────────────────── */}
@@ -354,35 +352,9 @@ export default function Results() {
             <p className="text-xs text-muted-foreground bg-secondary/50 rounded-lg p-3 leading-relaxed">
               Score uses AI semantic analysis — considers synonyms, implied skills, and experience relevance. Not a real ATS system output.
             </p>
-
-            {/* ─── Generate resume CTA ──────────────────────────────────── */}
-            <div className="pt-4 border-t border-border">
-              <p className="text-sm text-muted-foreground mb-4">
-                Ready to apply? Generate an improved version of your resume tailored to this job.
-              </p>
-              <Button
-                size="lg"
-                className="gap-2 w-full sm:w-auto"
-                onClick={handleGenerate}
-                disabled={isGenerating || generateResume.isPending}
-              >
-                {isGenerating || generateResume.isPending ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</>
-                ) : generatedResume ? (
-                  <><RefreshCw className="w-4 h-4" /> Regenerate improved resume</>
-                ) : (
-                  <><Wand2 className="w-4 h-4" /> Generate improved resume</>
-                )}
-              </Button>
-              {generatedResume && (
-                <button className="mt-3 text-sm text-primary hover:underline block" onClick={() => setActiveTab("generated")}>
-                  View generated resume →
-                </button>
-              )}
-            </div>
           </TabsContent>
 
-          {/* ─── Suggestions ──────────────────────────────────────────────── */}
+          {/* ─── Suggestions ────────────────────────────────────────────────────── */}
           <TabsContent value="suggestions" className="space-y-2.5">
             {suggestions.length === 0 ? (
               <p className="text-sm text-muted-foreground py-8 text-center">No suggestions generated.</p>
@@ -404,7 +376,9 @@ export default function Results() {
                             s.impact === "high" ? "bg-red-50 text-red-700 border-red-200" :
                             s.impact === "medium" ? "bg-amber-50 text-amber-700 border-amber-200" :
                             "bg-blue-50 text-blue-700 border-blue-200"
-                          }`}>{s.impact}</Badge>
+                          }`}>
+                            {s.impact === "high" ? "High impact" : s.impact === "medium" ? "Medium impact" : "Low impact"}
+                          </Badge>
                           {s.status === "accepted" && <Badge className="text-xs bg-emerald-500 text-white border-0">Accepted</Badge>}
                           {s.status === "rejected" && <Badge variant="secondary" className="text-xs">Rejected</Badge>}
                         </div>
@@ -452,18 +426,10 @@ export default function Results() {
                   </div>
                 ))}
 
-                {/* Generate CTA at bottom of suggestions too */}
                 <div className="pt-4 border-t border-border">
-                  <Button size="lg" className="gap-2 w-full sm:w-auto" onClick={handleGenerate}
-                    disabled={isGenerating || generateResume.isPending}>
-                    {isGenerating || generateResume.isPending ? (
-                      <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</>
-                    ) : generatedResume ? (
-                      <><RefreshCw className="w-4 h-4" /> Regenerate improved resume</>
-                    ) : (
-                      <><Wand2 className="w-4 h-4" /> Generate improved resume</>
-                    )}
-                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Accepted suggestions will be incorporated when you generate your improved resume in the <button className="text-primary hover:underline" onClick={() => setActiveTab("generate")}>Generate Resume</button> tab.
+                  </p>
                 </div>
               </>
             )}
@@ -562,37 +528,60 @@ export default function Results() {
           </TabsContent>
 
           {/* ─── Generated resume ─────────────────────────────────────────── */}
-          {generatedResume && (
-            <TabsContent value="generated">
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-sm font-medium text-foreground">Improved resume</p>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline" className="gap-1.5 text-xs h-8"
-                    onClick={() => { navigator.clipboard.writeText(generatedResume); toast.success("Copied"); }}>
-                    <Copy className="w-3 h-3" /> Copy
-                  </Button>
-                  <Button size="sm" variant="outline" className="gap-1.5 text-xs h-8"
-                    onClick={() => {
-                      const blob = new Blob([generatedResume], { type: "text/plain" });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement("a");
-                      a.href = url; a.download = "resume-improved.txt"; a.click();
-                      URL.revokeObjectURL(url);
-                    }}>
-                    <Download className="w-3 h-3" /> Download
-                  </Button>
-                  <Button size="sm" variant="ghost" className="gap-1.5 text-xs h-8 text-muted-foreground"
-                    onClick={handleGenerate} disabled={isGenerating}>
-                    {isGenerating ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                    Regenerate
-                  </Button>
+          {/* ─── Generate Resume Tab ────────────────────────────────────────────── */}
+          <TabsContent value="generate">
+            {generatedResume ? (
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-sm font-medium text-foreground">Improved resume</p>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" className="gap-1.5 text-xs h-8"
+                      onClick={() => { navigator.clipboard.writeText(generatedResume); toast.success("Copied"); }}>
+                      <Copy className="w-3 h-3" /> Copy
+                    </Button>
+                    <Button size="sm" variant="outline" className="gap-1.5 text-xs h-8"
+                      onClick={() => {
+                        const blob = new Blob([generatedResume], { type: "text/plain" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url; a.download = "resume-improved.txt"; a.click();
+                        URL.revokeObjectURL(url);
+                      }}>
+                      <Download className="w-3 h-3" /> Download
+                    </Button>
+                    <Button size="sm" variant="ghost" className="gap-1.5 text-xs h-8 text-muted-foreground"
+                      onClick={handleGenerate} disabled={isGenerating}>
+                      {isGenerating ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                      Regenerate
+                    </Button>
+                  </div>
+                </div>
+                <div className="bg-card border border-border rounded-xl p-6 text-xs text-foreground leading-relaxed whitespace-pre-wrap font-mono">
+                  {generatedResume}
                 </div>
               </div>
-              <div className="bg-card border border-border rounded-xl p-6 text-xs text-foreground leading-relaxed whitespace-pre-wrap font-mono">
-                {generatedResume}
+            ) : (
+              <div className="text-center py-16">
+                <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-5">
+                  <Wand2 className="w-7 h-7 text-primary" />
+                </div>
+                <h3 className="font-serif font-semibold text-lg text-foreground mb-2">Generate your improved resume</h3>
+                <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-6">
+                  We'll rewrite your resume using the job description, your accepted suggestions, and the rewritten summary — tailored specifically for this role.
+                </p>
+                <Button size="lg" className="gap-2" onClick={handleGenerate} disabled={isGenerating || generateResume.isPending}>
+                  {isGenerating || generateResume.isPending ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> Generating…</>
+                  ) : (
+                    <><Wand2 className="w-4 h-4" /> Generate improved resume</>
+                  )}
+                </Button>
+                <p className="text-xs text-muted-foreground mt-4">
+                  Tip: accept suggestions in the Suggestions tab first for the best result.
+                </p>
               </div>
-            </TabsContent>
-          )}
+            )}
+          </TabsContent>
         </Tabs>
       </div>
     </div>
