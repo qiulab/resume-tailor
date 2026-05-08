@@ -65,22 +65,16 @@ export default function Home() {
       toast.error("Please enter a valid job posting URL");
       return;
     }
-    if (!resumeFile) {
-      toast.error("Please upload your resume");
-      return;
-    }
-
     setIsSubmitting(true);
     try {
-      const base64 = await fileToBase64(resumeFile);
-      // Append notes to linkedinUrl field as a workaround — pass notes via a combined field
+      const base64 = resumeFile ? await fileToBase64(resumeFile) : "";
       const { analysisId } = await startAnalysis.mutateAsync({
         sessionToken,
         linkedinUrl: linkedinUrl || undefined,
         jobUrl,
         resumeBase64: base64,
-        resumeFileName: resumeFile.name,
-        resumeMimeType: resumeFile.type || "application/pdf",
+        resumeFileName: resumeFile?.name ?? "",
+        resumeMimeType: resumeFile?.type || "application/pdf",
         notes: notes || undefined,
       } as any);
       navigate(`/results/${analysisId}`);
@@ -101,7 +95,7 @@ export default function Home() {
             Evaluating your resume
           </h2>
           <p className="text-sm text-muted-foreground">
-            Reading the job description, analyzing your resume, and generating
+            Reading the job description{resumeFile ? ", analyzing your resume," : ""} and generating
             feedback. This takes about 60–90 seconds.
           </p>
           <div className="mt-6 flex gap-1.5 justify-center">
@@ -150,9 +144,7 @@ export default function Home() {
             Resume evaluation
           </h1>
           <p className="text-muted-foreground">
-            Upload your resume and a job posting. We'll tell you what's missing,
-            what's strong, and how to improve it — then you can generate a
-            tailored version.
+          Paste a job URL and optionally upload your resume. We'll evaluate the fit, identify gaps, and let you generate a tailored version.
           </p>
         </div>
 
@@ -200,7 +192,8 @@ export default function Home() {
           {/* Resume upload */}
           <div>
             <Label className="text-sm font-medium text-foreground mb-1.5 block">
-              Resume
+              Resume{" "}
+              <span className="text-muted-foreground font-normal">— optional</span>
             </Label>
             <div
               onDragOver={(e) => {
@@ -258,7 +251,7 @@ export default function Home() {
                     <span className="text-primary">browse</span>
                   </p>
                   <p className="text-xs text-muted-foreground/60">
-                    PDF or DOCX
+                    PDF or DOCX · optional
                   </p>
                 </div>
               )}
@@ -290,7 +283,7 @@ export default function Home() {
             type="submit"
             size="lg"
             className="w-full gap-2"
-            disabled={!jobUrl || !resumeFile || isSubmitting}
+            disabled={!jobUrl || isSubmitting}
           >
             {isSubmitting ? (
               <>

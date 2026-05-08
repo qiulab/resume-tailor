@@ -378,14 +378,30 @@ ${linkedinContext}${notesContext}`;
     (s: SuggestionItem) => !SUMMARY_SECTIONS.some((sec) => s.section.toLowerCase().includes(sec))
   );
 
-  // Use LLM semantic scoring instead of keyword counting
-  const { score, label, disclaimer, strengths, weaknesses } = await computeSemanticATSScore(
-    resumeText,
-    jobDescription,
-    parsed.matchedKeywords,
-    parsed.missingKeywords,
-    parsed.atsBreakdown
-  );
+  // Use LLM semantic scoring with fallback to keyword-based scoring
+  let score: number, label: string, disclaimer: string, strengths: string[], weaknesses: string[];
+  try {
+    const semantic = await computeSemanticATSScore(
+      resumeText,
+      jobDescription,
+      parsed.matchedKeywords,
+      parsed.missingKeywords,
+      parsed.atsBreakdown
+    );
+    score = semantic.score;
+    label = semantic.label;
+    disclaimer = semantic.disclaimer;
+    strengths = semantic.strengths;
+    weaknesses = semantic.weaknesses;
+  } catch (semanticErr) {
+    console.warn("[analyzeResume] Semantic scoring failed, falling back to keyword scoring:", semanticErr);
+    const fallback = computeHonestATSScore(parsed.matchedKeywords, parsed.missingKeywords, parsed.atsBreakdown);
+    score = fallback.score;
+    label = fallback.label;
+    disclaimer = fallback.disclaimer;
+    strengths = [];
+    weaknesses = [];
+  }
 
   return {
     ...parsed,

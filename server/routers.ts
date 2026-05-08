@@ -170,8 +170,9 @@ export const appRouter = router({
               "professional"
             );
             await createCoverLetter({ analysisId, content: coverLetterContent, tone: "professional" });
-          } catch (err) {
-            console.error("[startAnalysis] Processing error:", err);
+          } catch (err: any) {
+            console.error("[startAnalysis] Processing error:", err?.message ?? err);
+            console.error("[startAnalysis] Stack:", err?.stack);
             await updateAnalysis(analysisId, { status: "failed" });
           }
         })();
