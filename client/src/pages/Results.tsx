@@ -163,7 +163,7 @@ export default function Results() {
                 <Sparkles className="w-6 h-6 text-primary animate-pulse" />
               </div>
               <h2 className="text-lg font-serif font-semibold text-foreground mb-2">
-                {jobTitle ? `Evaluating for ${jobTitle}` : "Evaluating your resume"}
+                {jobTitle ? `Leveling up for ${jobTitle}` : "Leveling up your resume"}
               </h2>
               <p className="text-sm text-muted-foreground mb-4">
                 Analyzing your resume against the job description using semantic matching. About 60–90 seconds.

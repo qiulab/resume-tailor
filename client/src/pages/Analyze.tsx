@@ -177,7 +177,7 @@ export default function Analyze() {
             <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center">
               <FileText className="w-3.5 h-3.5 text-primary-foreground" />
             </div>
-            <span className="font-serif font-semibold text-foreground">ResumeTailor</span>
+            <span className="font-serif font-semibold text-foreground">LevelUp</span>
           </button>
           <Button variant="ghost" size="sm" onClick={() => navigate("/history")}>My History</Button>
         </div>

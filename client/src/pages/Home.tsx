@@ -217,7 +217,7 @@ export default function Home() {
               <FileText className="w-3.5 h-3.5 text-primary-foreground" />
             </div>
             <span className="font-serif font-semibold text-foreground">
-              ResumeTailor
+              LevelUp
             </span>
           </div>
           <Button
@@ -236,10 +236,10 @@ export default function Home() {
       <div className="container max-w-xl mx-auto py-14 px-4">
         <div className="mb-10">
           <h1 className="text-3xl font-serif font-semibold text-foreground mb-3">
-            Resume evaluation
+            LevelUp
           </h1>
           <p className="text-muted-foreground">
-          Paste a job URL and optionally upload your resume. We'll evaluate the fit, identify gaps, and let you generate a tailored version.
+            Level up your skills and resume to get the job. Paste a job URL, add your resume, and get a clear picture of what's missing — with project ideas to close the gap.
           </p>
         </div>
 
