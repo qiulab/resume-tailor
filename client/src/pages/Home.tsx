@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useSession } from "@/hooks/useSession";
@@ -8,14 +8,117 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
-  FileText,
-  Upload,
-  X,
-  CheckCircle,
-  Loader2,
-  Sparkles,
-  History,
+  FileText, Upload, X, CheckCircle, Loader2, Sparkles, History,
+  Search, Brain, Zap, Code2, Wand2, Linkedin,
 } from "lucide-react";
+
+// ─── Animated progress screen ─────────────────────────────────────────────────
+function LoadingScreen({ hasResume, hasLinkedIn }: { hasResume: boolean; hasLinkedIn: boolean }) {
+  const [activeStep, setActiveStep] = useState(0);
+  const [completedSteps, setCompletedSteps] = useState<number[]>([]);
+
+  const steps = [
+    { icon: Search, label: "Reading job posting", detail: "Extracting requirements, skills, and responsibilities", duration: 8000 },
+    ...(hasLinkedIn ? [{ icon: Linkedin, label: "Scanning LinkedIn profile", detail: "Parsing your work history, skills, and education", duration: 10000 }] : []),
+    ...(hasResume ? [{ icon: FileText, label: "Reading your resume", detail: "Extracting experience, skills, and achievements", duration: 7000 }] : []),
+    { icon: Brain, label: "Analyzing the fit", detail: "Comparing your background to the role semantically", duration: 12000 },
+    { icon: Zap, label: "Finding skill gaps", detail: "Identifying what's missing and what's strong", duration: 8000 },
+    { icon: Code2, label: "Generating project ideas", detail: "Brainstorming ways to close your skill gaps", duration: 8000 },
+    { icon: Wand2, label: "Preparing your results", detail: "Almost done — putting it all together", duration: 5000 },
+  ];
+
+  useEffect(() => {
+    let step = 0;
+    const advance = () => {
+      if (step < steps.length - 1) {
+        setCompletedSteps((prev) => [...prev, step]);
+        step++;
+        setActiveStep(step);
+        setTimeout(advance, steps[step]?.duration ?? 8000);
+      }
+    };
+    setTimeout(advance, steps[0]?.duration ?? 8000);
+  }, []);
+
+  const ActiveIcon = steps[activeStep]?.icon ?? Sparkles;
+
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center px-4">
+      <div className="w-full max-w-md mx-auto">
+        {/* Animated icon */}
+        <div className="flex justify-center mb-8">
+          <div className="relative">
+            <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center">
+              <ActiveIcon className="w-9 h-9 text-primary" />
+            </div>
+            {/* Pulse rings */}
+            <div className="absolute inset-0 rounded-2xl bg-primary/10 animate-ping opacity-30" />
+          </div>
+        </div>
+
+        {/* Current step text */}
+        <div className="text-center mb-8">
+          <h2 className="text-xl font-serif font-semibold text-foreground mb-1">
+            {steps[activeStep]?.label}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {steps[activeStep]?.detail}
+          </p>
+        </div>
+
+        {/* Step list */}
+        <div className="space-y-3">
+          {steps.map((step, i) => {
+            const Icon = step.icon;
+            const isDone = completedSteps.includes(i);
+            const isActive = i === activeStep;
+            return (
+              <div key={i} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-500 ${
+                isActive ? "bg-primary/8 border border-primary/20" :
+                isDone ? "opacity-60" :
+                "opacity-30"
+              }`}>
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all ${
+                  isDone ? "bg-emerald-100" :
+                  isActive ? "bg-primary/15" :
+                  "bg-secondary"
+                }`}>
+                  {isDone ? (
+                    <CheckCircle className="w-4 h-4 text-emerald-600" />
+                  ) : isActive ? (
+                    <Loader2 className="w-4 h-4 text-primary animate-spin" />
+                  ) : (
+                    <Icon className="w-4 h-4 text-muted-foreground/40" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm font-medium ${
+                    isDone ? "text-muted-foreground line-through" :
+                    isActive ? "text-foreground" :
+                    "text-muted-foreground/50"
+                  }`}>{step.label}</p>
+                </div>
+                {isDone && <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />}
+                {isActive && (
+                  <div className="flex gap-0.5 shrink-0">
+                    {[0,1,2].map((j) => (
+                      <div key={j} className="w-1 h-1 rounded-full bg-primary animate-bounce"
+                        style={{ animationDelay: `${j * 0.15}s` }} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <p className="text-center text-xs text-muted-foreground mt-8">
+          This usually takes 60–90 seconds — hang tight
+        </p>
+      </div>
+    </div>
+  );
+}
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -85,31 +188,7 @@ export default function Home() {
   };
 
   if (isSubmitting) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center max-w-sm mx-auto px-6">
-          <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mx-auto mb-5">
-            <Sparkles className="w-6 h-6 text-primary animate-pulse" />
-          </div>
-          <h2 className="text-lg font-serif font-semibold text-foreground mb-2">
-            Evaluating your resume
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Reading the job description{resumeFile ? ", analyzing your resume," : ""} and generating
-            feedback. This takes about 60–90 seconds.
-          </p>
-          <div className="mt-6 flex gap-1.5 justify-center">
-            {[0, 1, 2].map((i) => (
-              <div
-                key={i}
-                className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce"
-                style={{ animationDelay: `${i * 0.15}s` }}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-    );
+    return <LoadingScreen hasResume={!!resumeFile} hasLinkedIn={!!linkedinUrl} />;
   }
 
   return (
