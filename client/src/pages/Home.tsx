@@ -13,9 +13,23 @@ import {
 } from "lucide-react";
 
 // ─── Animated progress screen ─────────────────────────────────────────────────
-function LoadingScreen({ hasResume, hasLinkedIn }: { hasResume: boolean; hasLinkedIn: boolean }) {
+function LoadingScreen({
+  hasResume,
+  hasLinkedIn,
+  analysisId,
+  sessionToken,
+  onComplete,
+}: {
+  hasResume: boolean;
+  hasLinkedIn: boolean;
+  analysisId: number | null;
+  sessionToken: string;
+  onComplete: () => void;
+}) {
   const [activeStep, setActiveStep] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
+  const stepRef = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const steps = [
     { icon: Search, label: "Reading job posting", detail: "Extracting requirements, skills, and responsibilities", duration: 8000 },
@@ -27,18 +41,47 @@ function LoadingScreen({ hasResume, hasLinkedIn }: { hasResume: boolean; hasLink
     { icon: Wand2, label: "Preparing your results", detail: "Almost done — putting it all together", duration: 5000 },
   ];
 
+  // Advance steps on a timer — stops at the last step to wait for real completion
   useEffect(() => {
-    let step = 0;
     const advance = () => {
-      if (step < steps.length - 1) {
-        setCompletedSteps((prev) => [...prev, step]);
-        step++;
-        setActiveStep(step);
-        setTimeout(advance, steps[step]?.duration ?? 8000);
+      const current = stepRef.current;
+      if (current < steps.length - 1) {
+        setCompletedSteps((prev) => [...prev, current]);
+        stepRef.current = current + 1;
+        setActiveStep(current + 1);
+        timerRef.current = setTimeout(advance, steps[current + 1]?.duration ?? 8000);
       }
+      // If we've reached the last step, just stay there and wait for polling to fire onComplete
     };
-    setTimeout(advance, steps[0]?.duration ?? 8000);
+    timerRef.current = setTimeout(advance, steps[0]?.duration ?? 8000);
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
   }, []);
+
+  // Poll the backend for completion status
+  const statusQuery = trpc.resume.getStatus.useQuery(
+    { analysisId: analysisId ?? 0, sessionToken },
+    {
+      enabled: analysisId !== null,
+      refetchInterval: 3000,
+      refetchIntervalInBackground: true,
+    }
+  );
+
+  useEffect(() => {
+    if (statusQuery.data?.status === "completed") {
+      // Mark all remaining steps as done, then navigate
+      setCompletedSteps(steps.map((_, i) => i));
+      setActiveStep(steps.length - 1);
+      // Small delay so the user sees the final step complete
+      const t = setTimeout(() => onComplete(), 600);
+      return () => clearTimeout(t);
+    }
+    if (statusQuery.data?.status === "failed") {
+      onComplete();
+    }
+  }, [statusQuery.data?.status]);
 
   const ActiveIcon = steps[activeStep]?.icon ?? Sparkles;
 
@@ -140,6 +183,7 @@ export default function Home() {
   const [resumeMode, setResumeMode] = useState<"upload" | "paste">("upload");
   const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingAnalysisId, setPendingAnalysisId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const startAnalysis = trpc.resume.startAnalysis.useMutation();
@@ -170,12 +214,18 @@ export default function Home() {
       toast.error("Please enter a valid job posting URL");
       return;
     }
+    // Validate: require at least a resume or a LinkedIn URL
+    const hasResumeData = resumeMode === "upload" ? !!resumeFile : resumeText.trim().length > 0;
+    if (!hasResumeData && !linkedinUrl.trim()) {
+      toast.error("Please provide your resume or LinkedIn profile URL");
+      return;
+    }
     setIsSubmitting(true);
     try {
       // Handle both upload and paste modes
-      let base64 = "";
-      let fileName = "";
-      let mimeType = "text/plain";
+      let base64: string | undefined;
+      let fileName: string | undefined;
+      let mimeType: string | undefined;
       if (resumeMode === "upload" && resumeFile) {
         base64 = await fileToBase64(resumeFile);
         fileName = resumeFile.name;
@@ -185,6 +235,7 @@ export default function Home() {
         fileName = "resume.txt";
         mimeType = "text/plain";
       }
+      // If no resume, only LinkedIn URL is provided — backend will use LinkedIn data as the candidate context
       const { analysisId } = await startAnalysis.mutateAsync({
         sessionToken,
         linkedinUrl: linkedinUrl || undefined,
@@ -194,7 +245,8 @@ export default function Home() {
         resumeMimeType: mimeType,
         notes: notes || undefined,
       } as any);
-      navigate(`/results/${analysisId}`);
+      // Stay on the loading screen and poll until the analysis is done
+      setPendingAnalysisId(analysisId);
     } catch (err: any) {
       toast.error(err?.message ?? "Something went wrong. Please try again.");
       setIsSubmitting(false);
@@ -204,7 +256,21 @@ export default function Home() {
   const hasResume = resumeMode === "upload" ? !!resumeFile : resumeText.trim().length > 0;
 
   if (isSubmitting) {
-    return <LoadingScreen hasResume={hasResume} hasLinkedIn={!!linkedinUrl} />;
+    return (
+      <LoadingScreen
+        hasResume={hasResume}
+        hasLinkedIn={!!linkedinUrl}
+        analysisId={pendingAnalysisId}
+        sessionToken={sessionToken}
+        onComplete={() => {
+          if (pendingAnalysisId) {
+            navigate(`/results/${pendingAnalysisId}`);
+          } else {
+            setIsSubmitting(false);
+          }
+        }}
+      />
+    );
   }
 
   return (
@@ -289,7 +355,7 @@ export default function Home() {
             <div className="flex items-center justify-between mb-1.5">
               <Label className="text-sm font-medium text-foreground">
                 Resume{" "}
-                <span className="text-muted-foreground font-normal">— optional</span>
+                <span className="text-muted-foreground font-normal">— optional if LinkedIn provided</span>
               </Label>
               <div className="flex rounded-lg border border-border overflow-hidden text-xs">
                 <button
@@ -424,7 +490,7 @@ export default function Home() {
             ) : (
               <>
                 <Sparkles className="w-4 h-4" />
-                Evaluate my resume
+                {hasResume ? "Evaluate my resume" : "Evaluate my profile"}
               </>
             )}
           </Button>

@@ -30,6 +30,7 @@ import {
 import {
   scrapeLinkedInProfile,
   extractLinkedInUsername,
+  buildLinkedInContext,
 } from "./linkedinService";
 import { storagePut } from "./storage";
 
@@ -53,9 +54,9 @@ export const appRouter = router({
           sessionToken: z.string().min(1),
           linkedinUrl: z.string().optional(),
           jobUrl: z.string().url("Please enter a valid job posting URL"),
-          resumeBase64: z.string(),
-          resumeFileName: z.string(),
-          resumeMimeType: z.string(),
+          resumeBase64: z.string().optional(),
+          resumeFileName: z.string().optional(),
+          resumeMimeType: z.string().optional(),
           notes: z.string().optional(),
         })
       )
@@ -71,20 +72,25 @@ export const appRouter = router({
         // Process asynchronously
         (async () => {
           try {
-            const buffer = Buffer.from(input.resumeBase64, "base64");
+            const hasResume = !!(input.resumeBase64 && input.resumeFileName && input.resumeMimeType);
 
-            // 1. Upload resume to storage
-            const fileKey = `resumes/${input.sessionToken}/${Date.now()}-${input.resumeFileName}`;
-            const { key } = await storagePut(fileKey, buffer, input.resumeMimeType);
-
-            // 2. Extract text from resume
-            const resumeText = await extractTextFromBuffer(buffer, input.resumeMimeType);
+            // 1. Upload resume to storage (only if resume provided)
+            let resumeFileKey: string | undefined;
+            let resumeText = "";
+            if (hasResume) {
+              const buffer = Buffer.from(input.resumeBase64!, "base64");
+              const fileKey = `resumes/${input.sessionToken}/${Date.now()}-${input.resumeFileName}`;
+              const { key } = await storagePut(fileKey, buffer, input.resumeMimeType!);
+              resumeFileKey = key;
+              // 2. Extract text from resume
+              resumeText = await extractTextFromBuffer(buffer, input.resumeMimeType!);
+            }
 
             // 3. Scrape job description
             const { jobTitle, companyName, description: jobDescription } =
               await scrapeJobDescription(input.jobUrl);
 
-            // 4. Scrape LinkedIn profile (if URL provided) — run in parallel with job scrape
+            // 4. Scrape LinkedIn profile (if URL provided)
             let linkedinProfile = null;
             let linkedinEnriched = 0;
             if (input.linkedinUrl && extractLinkedInUsername(input.linkedinUrl)) {
@@ -94,6 +100,16 @@ export const appRouter = router({
               } catch (err) {
                 console.warn("[LinkedIn] Scraping failed, continuing without:", err);
               }
+            }
+
+            // If no resume was provided, build resumeText from LinkedIn profile data
+            // so all downstream functions have a rich candidate context to work with
+            if (!hasResume && linkedinProfile) {
+              resumeText = buildLinkedInContext(linkedinProfile);
+            }
+
+            if (!resumeText.trim()) {
+              throw new Error("No resume or LinkedIn profile data available to analyze.");
             }
 
             // 5. Run AI analysis (with LinkedIn context if available)
@@ -122,7 +138,7 @@ export const appRouter = router({
 
             // 7. Save all results
             await updateAnalysis(analysisId, {
-              resumeFileKey: key,
+              resumeFileKey: resumeFileKey,
               resumeText,
               jobDescription,
               jobTitle: analysis.jobTitle,
