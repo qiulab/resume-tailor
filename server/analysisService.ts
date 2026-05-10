@@ -128,23 +128,10 @@ export async function scrapeJobDescription(url: string): Promise<{
 // ─── Resume Text Extractor ─────────────────────────────────────────────────
 export async function extractTextFromBuffer(buffer: Buffer, mimeType: string): Promise<string> {
   if (mimeType === "application/pdf" || mimeType.includes("pdf")) {
-    try {
-      // Use pdfjs-dist for PDF parsing
-      // @ts-ignore
-      const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
-      const pdfData = new Uint8Array(buffer);
-      const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
-      let text = "";
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const content = await page.getTextContent();
-        text += content.items.map((item: any) => item.str).join(" ") + "\n";
-      }
-      return text.trim();
-    } catch (err) {
-      console.error("[extractTextFromBuffer] PDF parsing error:", err);
-      return "";
-    }
+    const pdfParseModule = await import("pdf-parse");
+    const pdfParse = (pdfParseModule as any).default ?? pdfParseModule;
+    const data = await pdfParse(buffer);
+    return data.text;
   } else if (
     mimeType.includes("word") ||
     mimeType.includes("docx") ||
