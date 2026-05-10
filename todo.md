@@ -151,3 +151,11 @@
 - [x] Remove Summary, Cover Letter, and Jobs tabs from Results
 - [x] Move "Generate improved resume" button to the bottom of the evaluation page as the final CTA
 - [x] Keep tabs: Evaluation, Suggestions, Skills, Projects
+
+## Remove LinkedIn URL Field
+- [ ] Remove LinkedIn URL input field from Home.tsx form
+- [ ] Make resume upload/paste mandatory (no longer optional)
+- [ ] Remove LinkedIn parameters from server routers
+- [ ] Remove LinkedIn scraping logic from analysisService
+- [ ] Update README.md to remove LinkedIn integration mentions
+- [ ] Save checkpoint and sync to GitHub

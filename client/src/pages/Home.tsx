@@ -9,10 +9,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
   FileText, Upload, X, CheckCircle, Loader2, Sparkles, History,
-  Search, Brain, Zap, Code2, Wand2, Linkedin,
+  Search, Brain, Zap, Code2, Wand2,
 } from "lucide-react";
 
 // ─── Animated progress screen ─────────────────────────────────────────────────
+<<<<<<< Updated upstream
 function LoadingScreen({
   hasResume,
   hasLinkedIn,
@@ -26,6 +27,9 @@ function LoadingScreen({
   sessionToken: string;
   onComplete: () => void;
 }) {
+=======
+function LoadingScreen({ hasResume }: { hasResume: boolean }) {
+>>>>>>> Stashed changes
   const [activeStep, setActiveStep] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   const stepRef = useRef(0);
@@ -33,7 +37,6 @@ function LoadingScreen({
 
   const steps = [
     { icon: Search, label: "Reading job posting", detail: "Extracting requirements, skills, and responsibilities", duration: 8000 },
-    ...(hasLinkedIn ? [{ icon: Linkedin, label: "Scanning LinkedIn profile", detail: "Parsing your work history, skills, and education", duration: 10000 }] : []),
     ...(hasResume ? [{ icon: FileText, label: "Reading your resume", detail: "Extracting experience, skills, and achievements", duration: 7000 }] : []),
     { icon: Brain, label: "Analyzing the fit", detail: "Comparing your background to the role semantically", duration: 12000 },
     { icon: Zap, label: "Finding skill gaps", detail: "Identifying what's missing and what's strong", duration: 8000 },
@@ -175,7 +178,7 @@ function fileToBase64(file: File): Promise<string> {
 export default function Home() {
   const [, navigate] = useLocation();
   const sessionToken = useSession();
-  const [linkedinUrl, setLinkedinUrl] = useState("");
+
   const [jobUrl, setJobUrl] = useState("");
   const [notes, setNotes] = useState("");
   const [resumeFile, setResumeFile] = useState<File | null>(null);
@@ -214,10 +217,15 @@ export default function Home() {
       toast.error("Please enter a valid job posting URL");
       return;
     }
+<<<<<<< Updated upstream
     // Validate: require at least a resume or a LinkedIn URL
     const hasResumeData = resumeMode === "upload" ? !!resumeFile : resumeText.trim().length > 0;
     if (!hasResumeData && !linkedinUrl.trim()) {
       toast.error("Please provide your resume or LinkedIn profile URL");
+=======
+    if (!hasResume) {
+      toast.error("Resume is required");
+>>>>>>> Stashed changes
       return;
     }
     setIsSubmitting(true);
@@ -238,7 +246,6 @@ export default function Home() {
       // If no resume, only LinkedIn URL is provided — backend will use LinkedIn data as the candidate context
       const { analysisId } = await startAnalysis.mutateAsync({
         sessionToken,
-        linkedinUrl: linkedinUrl || undefined,
         jobUrl,
         resumeBase64: base64,
         resumeFileName: fileName,
@@ -256,6 +263,7 @@ export default function Home() {
   const hasResume = resumeMode === "upload" ? !!resumeFile : resumeText.trim().length > 0;
 
   if (isSubmitting) {
+<<<<<<< Updated upstream
     return (
       <LoadingScreen
         hasResume={hasResume}
@@ -271,6 +279,9 @@ export default function Home() {
         }}
       />
     );
+=======
+    return <LoadingScreen hasResume={hasResume} />;
+>>>>>>> Stashed changes
   }
 
   return (
@@ -329,33 +340,18 @@ export default function Home() {
             />
           </div>
 
-          {/* LinkedIn URL */}
-          <div>
-            <Label
-              htmlFor="linkedin"
-              className="text-sm font-medium text-foreground mb-1.5 block"
-            >
-              LinkedIn profile URL{" "}
-              <span className="text-muted-foreground font-normal">
-                — optional, enables deeper analysis
-              </span>
-            </Label>
-            <Input
-              id="linkedin"
-              type="url"
-              placeholder="https://linkedin.com/in/your-profile"
-              value={linkedinUrl}
-              onChange={(e) => setLinkedinUrl(e.target.value)}
-              className="h-10"
-            />
-          </div>
+
 
           {/* Resume — upload or paste toggle */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <Label className="text-sm font-medium text-foreground">
+<<<<<<< Updated upstream
                 Resume{" "}
                 <span className="text-muted-foreground font-normal">— optional if LinkedIn provided</span>
+=======
+                Resume
+>>>>>>> Stashed changes
               </Label>
               <div className="flex rounded-lg border border-border overflow-hidden text-xs">
                 <button
@@ -447,7 +443,7 @@ export default function Home() {
                     <span className="text-primary">browse</span>
                   </p>
                   <p className="text-xs text-muted-foreground/60">
-                    PDF or DOCX · optional
+                    PDF or DOCX
                   </p>
                 </div>
               )}
