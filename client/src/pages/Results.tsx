@@ -106,7 +106,7 @@ function LoadingScreenMultiStep() {
           })}
         </div>
         <p className="text-center text-xs text-muted-foreground mt-8">
-          This usually takes 60–90 seconds — hang tight
+          This usually takes ~30 seconds — hang tight
         </p>
       </div>
     </div>
