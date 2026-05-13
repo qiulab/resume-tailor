@@ -72,13 +72,13 @@ function LoadingScreenMultiStep() {
                 isDone ? "bg-emerald-50" :
                 "opacity-30"
               }`}>
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all ${
-                  isDone ? "bg-emerald-100" :
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-all ${
+                  isDone ? "bg-emerald-600" :
                   isActive ? "bg-primary/15" :
                   "bg-secondary"
                 }`}>
                   {isDone ? (
-                    <CheckCircle className="w-4 h-4 text-emerald-600" />
+                    <CheckCircle className="w-5 h-5 text-white" />
                   ) : isActive ? (
                     <Loader2 className="w-4 h-4 text-primary animate-spin" />
                   ) : (
@@ -92,7 +92,7 @@ function LoadingScreenMultiStep() {
                     "text-muted-foreground/50"
                   }`}>{step.label}</p>
                 </div>
-                {isDone && <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
+                {isDone && <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />}
                 {isActive && (
                   <div className="flex gap-0.5 shrink-0">
                     {[0,1,2].map((j) => (
