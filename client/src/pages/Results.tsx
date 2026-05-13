@@ -217,6 +217,7 @@ export default function Results() {
   const [activeTab, setActiveTab] = useState("evaluation");
   const [expanded, setExpanded] = useState<number | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [loadedTabs, setLoadedTabs] = useState(new Set(["evaluation"]));
   const utils = trpc.useUtils();
 
   const { status, jobTitle, isLoading: polling } = usePolling(analysisId, sessionToken, () => setIsReady(true));
@@ -225,6 +226,17 @@ export default function Results() {
     { analysisId, sessionToken },
     { enabled: isReady && !!sessionToken }
   );
+
+  // Lazy load other tabs after first tab renders
+  useEffect(() => {
+    if (!data) return;
+    const timer = setTimeout(() => {
+      setLoadedTabs(new Set(["evaluation", "suggestions", "skills", "projects", "generate"]));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [data]);
+
+  const shouldRenderTab = (tabName: string) => loadedTabs.has(tabName);
 
   const updateSuggestion = trpc.resume.updateSuggestion.useMutation({
     onSuccess: () => utils.resume.getAnalysis.invalidate({ analysisId, sessionToken }),
