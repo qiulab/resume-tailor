@@ -19,12 +19,12 @@ function LoadingScreenMultiStep() {
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
 
   const steps = [
-    { icon: Search, label: "Reading job posting", detail: "Extracting requirements, skills, and responsibilities", duration: 8000 },
-    { icon: FileText, label: "Reading your resume", detail: "Extracting experience, skills, and achievements", duration: 7000 },
-    { icon: Brain, label: "Analyzing the fit", detail: "Comparing your background to the role semantically", duration: 12000 },
-    { icon: Zap, label: "Finding skill gaps", detail: "Identifying what's missing and what's strong", duration: 8000 },
-    { icon: Code2, label: "Generating project ideas", detail: "Brainstorming ways to close your skill gaps", duration: 8000 },
-    { icon: Wand2, label: "Preparing your results", detail: "Almost done — putting it all together", duration: 5000 },
+    { icon: Search, label: "Reading job posting", detail: "Extracting requirements, skills, and responsibilities", duration: 2000 },
+    { icon: FileText, label: "Reading your resume", detail: "Extracting experience, skills, and achievements", duration: 1800 },
+    { icon: Brain, label: "Analyzing the fit", detail: "Comparing your background to the role semantically", duration: 2200 },
+    { icon: Zap, label: "Finding skill gaps", detail: "Identifying what's missing and what's strong", duration: 2000 },
+    { icon: Code2, label: "Generating project ideas", detail: "Brainstorming ways to close your skill gaps", duration: 2000 },
+    { icon: Wand2, label: "Preparing your results", detail: "Almost done — putting it all together", duration: 99999 },
   ];
 
   useEffect(() => {
@@ -87,12 +87,12 @@ function LoadingScreenMultiStep() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className={`text-sm font-medium ${
-                    isDone ? "text-muted-foreground line-through" :
+                    isDone ? "text-emerald-600 line-through" :
                     isActive ? "text-foreground" :
                     "text-muted-foreground/50"
                   }`}>{step.label}</p>
                 </div>
-                {isDone && <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />}
+                {isDone && <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
                 {isActive && (
                   <div className="flex gap-0.5 shrink-0">
                     {[0,1,2].map((j) => (
