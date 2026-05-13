@@ -148,35 +148,19 @@ export default function Results() {
 
   // ─── Loading ─────────────────────────────────────────────────────────────
   if (!isReady || polling) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center max-w-sm mx-auto px-6">
-          {status === "failed" ? (
-            <>
-              <AlertCircle className="w-10 h-10 text-destructive mx-auto mb-4" />
-              <h2 className="text-lg font-serif font-semibold text-foreground mb-2">Evaluation failed</h2>
-              <p className="text-sm text-muted-foreground mb-5">Something went wrong. Please try again.</p>
-              <Button onClick={() => navigate("/")}><ArrowLeft className="w-4 h-4 mr-2" /> Try again</Button>
-            </>
-          ) : (
-            <>
-              <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mx-auto mb-5">
-                <Sparkles className="w-6 h-6 text-primary animate-pulse" />
-              </div>
-              <h2 className="text-lg font-serif font-semibold text-foreground mb-2">
-                {jobTitle ? `Leveling up for ${jobTitle}` : "Leveling up your resume"}
-              </h2>
-              <p className="text-sm text-muted-foreground mb-4">
-                Analyzing your resume against the job description using semantic matching. About 60–90 seconds.
-              </p>
-              <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-                <Clock className="w-3.5 h-3.5" /><span>~60–90 seconds</span>
-              </div>
-            </>
-          )}
+    if (status === "failed") {
+      return (
+        <div className="min-h-screen bg-background flex items-center justify-center">
+          <div className="text-center max-w-sm mx-auto px-6">
+            <AlertCircle className="w-10 h-10 text-destructive mx-auto mb-4" />
+            <h2 className="text-lg font-serif font-semibold text-foreground mb-2">Evaluation failed</h2>
+            <p className="text-sm text-muted-foreground mb-5">Something went wrong. Please try again.</p>
+            <Button onClick={() => navigate("/")}><ArrowLeft className="w-4 h-4 mr-2" /> Try again</Button>
+          </div>
         </div>
-      </div>
-    );
+      );
+    }
+    return null;
   }
 
   if (isLoading || !data) {
