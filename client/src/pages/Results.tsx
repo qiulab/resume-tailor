@@ -11,6 +11,7 @@ import {
   FileText, CheckCircle, XCircle, RotateCcw, Copy,
   Sparkles, ArrowLeft, Loader2, RefreshCw, ChevronDown, ChevronUp,
   AlertCircle, Clock, Info, Wand2, Download, Code2, Briefcase,
+  Search, Brain, Zap,
 } from "lucide-react";
 
 // ─── Score ring ────────────────────────────────────────────────────────────
@@ -179,7 +180,24 @@ export default function Results() {
   }
 
   if (isLoading || !data) {
-    return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="w-6 h-6 text-primary animate-spin" /></div>;
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center max-w-sm mx-auto px-6">
+          <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mx-auto mb-5">
+            <Sparkles className="w-6 h-6 text-primary animate-pulse" />
+          </div>
+          <h2 className="text-lg font-serif font-semibold text-foreground mb-2">
+            {jobTitle ? `Leveling up for ${jobTitle}` : "Leveling up your resume"}
+          </h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            Analyzing your resume against the job description using semantic matching. About 60–90 seconds.
+          </p>
+          <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+            <Clock className="w-3.5 h-3.5" /><span>~60–90 seconds</span>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const { analysis, suggestions } = data;
